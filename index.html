@@ -62,13 +62,8 @@
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'vFinal_React_Dispatch_v1'; 
 
         // --- B. 유틸리티 함수 ---
+        const KOREA_HOLIDAYS = ["2024-05-01", "2024-05-05", "2024-05-06", "2024-05-15", "2024-06-06", "2024-08-15", "2024-09-16", "2024-09-17", "2024-09-18", "2024-10-03", "2024-10-09", "2024-12-25", "2025-01-01", "2025-01-28", "2025-01-29", "2025-01-30", "2025-03-01", "2025-05-01", "2025-05-05"];
         
-        const SPECIAL_HOLIDAYS = new Set([
-            "2024-02-09", "2024-02-10", "2024-02-11", "2024-02-12", "2024-04-10", "2024-05-06", "2024-05-15", "2024-09-16", "2024-09-17", "2024-09-18", 
-            "2025-01-28", "2025-01-29", "2025-01-30", "2025-03-03", "2025-05-05", "2025-05-06", "2025-10-05", "2025-10-06", "2025-10-07", "2025-10-08",
-            "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-02", "2026-05-05", "2026-05-24", "2026-05-25", "2026-08-17", "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-05"
-        ]);
-
         const isPublicHoliday = (dateStr) => {
             if (!dateStr) return false;
             const [year, month, day] = dateStr.split('-').map(Number);
@@ -83,8 +78,13 @@
             if (SPECIAL_HOLIDAYS.has(dateStr)) return true;
             return false;
         };
+        
+        const SPECIAL_HOLIDAYS = new Set([
+            "2024-02-09", "2024-02-10", "2024-02-11", "2024-02-12", "2024-04-10", "2024-05-06", "2024-05-15", "2024-09-16", "2024-09-17", "2024-09-18", 
+            "2025-01-28", "2025-01-29", "2025-01-30", "2025-03-03", "2025-05-05", "2025-05-06", "2025-10-05", "2025-10-06", "2025-10-07", "2025-10-08",
+            "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-02", "2026-05-05", "2026-05-24", "2026-05-25", "2026-08-17", "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-05"
+        ]);
 
-        // [수정] 강제 휴일 적용(isForceHoliday) 파라미터 추가
         const calculateWorkHours = (start, end, isDateHoliday, isForceHoliday) => {
             if (!start || !end) return { work: 0, extra: 0, adjusted: 0, valid: false };
             
@@ -102,7 +102,6 @@
             const work = Math.max(0, totalHours - 1); 
             let extra = 0, adjusted = 0;
             
-            // 날짜가 휴일이거나 사용자가 '휴일 시간 적용'을 체크한 경우
             if (isDateHoliday || isForceHoliday) {
                 const regularHolidayWork = Math.min(8, work);
                 const overtimeHolidayWork = Math.max(0, work - 8);
@@ -122,12 +121,9 @@
             };
         };
 
-        // [수정] 금액 산정 로직: '공공예약'일 때만 금액 계산
         const calculatePay = (duration, operationType) => {
-            // operationType이 없으면 '공공예약'으로 간주 (기존 데이터 호환)
             const type = operationType || '공공예약';
             if (type !== '공공예약') return 0;
-
             if (!duration || duration <= 1) return 12500;
             return 35000 * duration;
         };
@@ -329,19 +325,22 @@
 
                 sortedV.forEach(v => {
                     const info = dayData.reserved[v.id];
-                    // 운행 불가 제거됨 - 모든 예약 처리
+                    // 운행 불가여도 리스트에는 포함하되 슬롯은 비움 (달력 표시용)
+                    // (수정) 달력 표시를 위해 정보는 유지
                     const slots = [];
-                    for(let i=0; i<v.capacity; i++) {
-                        const key = `${v.id}_${i}`;
-                        if (manualAssignments[key] !== undefined) {
-                            const dId = manualAssignments[key];
-                            const driverName = drivers[dId];
-                            slots.push({ nm: driverName || '삭제됨', id: dId, type: 'manual', rank: currentRanks[dId] });
-                        } else if (pool.length > 0) {
-                             const driver = pool.shift();
-                             slots.push({ ...driver, type: 'auto' });
-                        } else {
-                            slots.push(null);
+                    if (!info.isUnavailable) {
+                        for(let i=0; i<v.capacity; i++) {
+                            const key = `${v.id}_${i}`;
+                            if (manualAssignments[key] !== undefined) {
+                                const dId = manualAssignments[key];
+                                const driverName = drivers[dId];
+                                slots.push({ nm: driverName || '삭제됨', id: dId, type: 'manual', rank: currentRanks[dId] });
+                            } else if (pool.length > 0) {
+                                const driver = pool.shift();
+                                slots.push({ ...driver, type: 'auto' });
+                            } else {
+                                slots.push(null);
+                            }
                         }
                     }
                     result.push({ vehicle: v, slots, info: dayData.reserved[v.id] });
@@ -491,7 +490,11 @@
                 }; 
                 n.driverStatus[idx] = !n.driverStatus[idx]; 
                 if (!n.driverStatus[idx]) {
-                    Object.keys(n.overrides).forEach(key => { if (n.overrides[key] === idx) delete n.overrides[key]; });
+                    Object.keys(n.overrides).forEach(key => {
+                        if (n.overrides[key] === idx) {
+                            delete n.overrides[key];
+                        }
+                    });
                 }
                 handleSaveDay(n); 
             };
@@ -606,9 +609,13 @@
                                         dispatch.forEach(item => {
                                             if (item.info.duration > offset) {
                                                 let colorClass = "bg-slate-50 text-slate-800";
-                                                if (item.info.duration === 2) colorClass = "bg-green-100 text-green-700";
-                                                else if (item.info.duration >= 3) colorClass = "bg-sky-100 text-sky-700";
-                                                else {
+                                                if (item.info.isUnavailable) {
+                                                    colorClass = "bg-red-100 text-red-600 border border-red-200";
+                                                } else if (item.info.duration === 2) {
+                                                    colorClass = "bg-green-100 text-green-700";
+                                                } else if (item.info.duration >= 3) {
+                                                    colorClass = "bg-sky-100 text-sky-700";
+                                                } else {
                                                     if (item.info.operationType === '공공예약') colorClass = "bg-red-50 text-red-600";
                                                     else if (item.info.operationType === '시티투어') colorClass = "bg-blue-50 text-blue-600";
                                                 }
@@ -616,12 +623,15 @@
                                                     vehicleGroups[item.vehicle.id] = {
                                                         name: item.vehicle.name,
                                                         drivers: [],
-                                                        color: colorClass
+                                                        color: colorClass,
+                                                        isUnavailable: item.info.isUnavailable
                                                     };
                                                 }
-                                                item.slots.forEach(slot => {
-                                                    if (slot) vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank});
-                                                });
+                                                if (!item.info.isUnavailable) {
+                                                    item.slots.forEach(slot => {
+                                                        if (slot) vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank});
+                                                    });
+                                                }
                                             }
                                         });
                                     }
@@ -637,8 +647,11 @@
                                         <span className={`${!isSel && isH ? 'text-red-500' : dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-slate-700'} self-end mr-1`}>{d}</span>
                                         <div className="w-full space-y-0.5 overflow-hidden">
                                             {Object.values(vehicleGroups).map((group, gIdx) => (
-                                                <div key={gIdx} className={`text-[9px] px-1 py-0.5 rounded truncate text-left ${group.color}`}>
-                                                    {`${group.name}: ${group.drivers.map(d => `${d.nm}(${d.rank})`).join(', ')}`}
+                                                <div key={gIdx} className={`text-[9px] px-1 py-0.5 rounded truncate text-left whitespace-normal break-keep ${group.color}`}>
+                                                    {group.isUnavailable ? 
+                                                        `⛔ ${group.name}` : 
+                                                        `${group.name}: ${group.drivers.map(d => `${d.nm}(${d.rank})`).join(', ')}`
+                                                    }
                                                 </div>
                                             ))}
                                         </div>
@@ -688,6 +701,7 @@
                     </header>
 
                     <div className="p-4 md:p-6 flex flex-col lg:flex-row gap-6 relative">
+                        {/* 왼쪽: 캘린더 & 운전자 (가변 너비) */}
                         <div className="flex-shrink-0 space-y-6" style={{ width: isDesktop ? leftPanelWidth : '100%' }}>
                             <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
                                 <div className="flex justify-between items-center mb-4 font-bold">
@@ -714,10 +728,17 @@
                                     {driverNames.map((nm, i) => (
                                         <div key={i} className={`flex items-center justify-between p-2 rounded-lg border text-xs font-bold group transition ${currentDayData.driverStatus[i] ? 'bg-white border-blue-100' : 'bg-slate-50 border-slate-200'}`}>
                                             <div className="flex items-center gap-2 flex-grow">
-                                                <button onClick={() => toggleDriverStatus(i)} className={`px-2 py-1 rounded-md text-[10px] w-10 flex-shrink-0 transition-colors ${currentDayData.driverStatus[i] ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>
+                                                <button 
+                                                    onClick={() => toggleDriverStatus(i)}
+                                                    className={`px-2 py-1 rounded-md text-[10px] w-10 flex-shrink-0 transition-colors ${currentDayData.driverStatus[i] ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
+                                                >
                                                     {currentDayData.driverStatus[i] ? '출근' : '휴무'}
                                                 </button>
-                                                <AutoSaveInput value={nm} onSave={(val) => updateDriverName(i, val)} className={`bg-transparent outline-none w-full ${!currentDayData.driverStatus[i] ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'}`} />
+                                                <AutoSaveInput 
+                                                    value={nm} 
+                                                    onSave={(val) => updateDriverName(i, val)} 
+                                                    className={`bg-transparent outline-none w-full ${!currentDayData.driverStatus[i] ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'}`} 
+                                                />
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 <div className="flex flex-col">
@@ -733,11 +754,13 @@
                             </div>
                         </div>
 
+                        {/* 리사이저 (PC/태블릿에서만 표시) */}
                         <div 
                             className="hidden lg:block w-2 bg-slate-200 hover:bg-blue-400 cursor-col-resize rounded-full transition-colors self-stretch flex-shrink-0 z-10"
                             onMouseDown={handleMouseDown}
                         ></div>
 
+                        {/* 중앙: 예약 입력 (Flexible) */}
                         <div className="flex-1 min-w-0 space-y-6">
                             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 min-h-[600px]">
                                 <div className="flex justify-between items-center mb-6 border-b pb-4 font-bold">
@@ -758,6 +781,7 @@
                                     {vehiclesList.map(v => {
                                         const isReserved = !!currentDayData.reserved[v.id];
                                         const info = isReserved ? currentDayData.reserved[v.id] : {};
+                                        // 현재 배차 정보 미리보기 (자동 배정)
                                         const currentDispatch = getDispatchResult().find(d => d.vehicle.id === v.id);
                                         const assignedDrivers = currentDispatch && currentDispatch.slots.filter(s => s).map(s => s.nm).join(', ');
 
@@ -769,6 +793,7 @@
                                                             <input type="checkbox" checked={isReserved} onChange={() => toggleVehicleReservation(v.id)} className="w-5 h-5 rounded text-blue-600"/>
                                                             <div><div className="text-sm font-black">{v.name}</div><div className="text-[10px] text-slate-400 font-mono">{v.plate}</div></div>
                                                         </label>
+                                                        {/* 배정된 운전자 표시 */}
                                                         {isReserved && assignedDrivers && (
                                                             <div className="ml-8 mt-1 text-xs text-blue-600 font-bold">
                                                                 <i className="fa-solid fa-user-check mr-1"></i> {assignedDrivers}
@@ -788,6 +813,7 @@
                                                 </div>
                                                 {isReserved && (
                                                     <div className="mt-3 pt-3 border-t border-blue-50 space-y-3 animate-[fadeIn_0.2s_ease-out]">
+                                                        {/* 휴일 시간 적용 버튼 추가 */}
                                                         <label className="flex items-center gap-2 mb-2">
                                                             <input 
                                                                 type="checkbox" 
@@ -1005,6 +1031,8 @@
 
                                                     sortedV.forEach(v => {
                                                         const info = data.reserved[v.id];
+                                                        if (info.isUnavailable) return; // 운행 불가 차량 제외
+
                                                         const t = calculateWorkHours(info.startTime, info.endTime, data.isHoliday, info.isHolidayWork);
                                                         if (!t.valid) return;
                                                         const pay = calculatePay(info.duration, info.operationType);
