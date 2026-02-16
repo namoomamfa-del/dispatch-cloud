@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>배차관리 클라우드</title>
+    
+    <!-- 1. 스타일 및 아이콘 (Tailwind CSS, FontAwesome) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background-color: #f8fafc; -webkit-tap-highlight-color: transparent; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        /* 로딩 스피너 */
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #2563eb; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* 애니메이션 */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+
+    <!-- 2. React 및 Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 3. Firebase Compat 라이브러리 -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- [설정] Firebase 설정 (본인의 설정으로 교체하세요) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCgdSAh6RLdKnVuvUSVT9tIKrGvLr9ajys",
+            authDomain: "carainge-59142.firebaseapp.com",
+            projectId: "carainge-59142",
+            storageBucket: "carainge-59142.firebasestorage.app",
+            messagingSenderId: "513172363375",
+            appId: "1:513172363375:web:e053e2241c5adf950a959a",
+            measurementId: "G-MTPB3SG23N"
+        };
+
+        const APP_ID = 'vFinal_React_Dispatch_v1';
+
+        // --- Firebase 초기화 ---
+        if (!firebase.apps.length) {
+            // 설정이 비어있으면 초기화를 건너뛰거나 에러 처리
+            try {
+                firebase.initializeApp(firebaseConfig);
+            } catch (e) {
+                console.error("Firebase 초기화 실패. 설정을 확인하세요.", e);
+            }
+        }
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- Lucide 아이콘 대체 (FontAwesome 매핑) ---
+        // React 코드의 Lucide 아이콘 컴포넌트를 FontAwesome 아이콘으로 대체합니다.
+        const Icons = {
+            Cloud: ({className}) => <i className={`fa-solid fa-cloud ${className}`} />,
+            RotateCcw: ({className}) => <i className={`fa-solid fa-rotate-left ${className}`} />,
+            PieChart: ({className}) => <i className={`fa-solid fa-chart-pie ${className}`} />,
+            RotateCw: ({className}) => <i className={`fa-solid fa-rotate-right ${className}`} />,
+            Maximize: ({className}) => <i className={`fa-solid fa-expand ${className}`} />,
+            ChevronLeft: ({className}) => <i className={`fa-solid fa-chevron-left ${className}`} />,
+            ChevronRight: ({className}) => <i className={`fa-solid fa-chevron-right ${className}`} />,
+            Plus: ({className}) => <i className={`fa-solid fa-plus ${className}`} />,
+            Trash2: ({className}) => <i className={`fa-solid fa-trash-can ${className}`} />,
+            ChevronUp: ({className}) => <i className={`fa-solid fa-chevron-up ${className}`} />,
+            ChevronDown: ({className}) => <i className={`fa-solid fa-chevron-down ${className}`} />,
+            Bus: ({className}) => <i className={`fa-solid fa-bus ${className}`} />,
+            BusFront: ({className}) => <i className={`fa-solid fa-van-shuttle ${className}`} />,
+            UserCheck: ({className}) => <i className={`fa-solid fa-user-check ${className}`} />,
+            Receipt: ({className}) => <i className={`fa-solid fa-receipt ${className}`} />,
+            X: ({className}) => <i className={`fa-solid fa-xmark ${className}`} />,
+            Link: ({className}) => <i className={`fa-solid fa-link ${className}`} />,
+            ArrowLeft: ({className}) => <i className={`fa-solid fa-arrow-left ${className}`} />,
+            Calendar: ({className}) => <i className={`fa-regular fa-calendar ${className}`} />,
+            Settings: ({className}) => <i className={`fa-solid fa-gear ${className}`} />,
+            Search: ({className}) => <i className={`fa-solid fa-magnifying-glass ${className}`} />,
+            ChevronDownCircle: ({className}) => <i className={`fa-solid fa-circle-chevron-down ${className}`} />,
+            ChevronUpCircle: ({className}) => <i className={`fa-solid fa-circle-chevron-up ${className}`} />
+        };
+
+        // --- 유틸리티 함수 및 상수 ---
+        const KOREA_HOLIDAYS = ["2024-05-01", "2024-05-05", "2024-05-06", "2024-05-15", "2024-06-06", "2024-08-15", "2024-09-16", "2024-09-17", "2024-09-18", "2024-10-03", "2024-10-09", "2024-12-25", "2025-01-01", "2025-01-28", "2025-01-29", "2025-01-30", "2025-03-01", "2025-05-01", "2025-05-05"];
+        const SPECIAL_HOLIDAYS = new Set([
+            "2024-02-09", "2024-02-10", "2024-02-11", "2024-02-12", "2024-04-10", "2024-05-06", "2024-05-15", "2024-09-16", "2024-09-17", "2024-09-18", 
+            "2025-01-28", "2025-01-29", "2025-01-30", "2025-03-03", "2025-05-05", "2025-05-06", "2025-10-05", "2025-10-06", "2025-10-07", "2025-10-08",
+            "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-02", "2026-05-05", "2026-05-24", "2026-05-25", "2026-08-17", "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-05"
+        ]);
+
+        const isPublicHoliday = (dateStr) => {
+            if (!dateStr) return false;
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const date = new Date(year, month - 1, day);
+            const dayOfWeek = date.getDay(); 
+            if (dayOfWeek === 0 || dayOfWeek === 6) return true;
+            const m = month;
+            const d = day;
+            const md = `${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const solarHolidays = ["01-01", "03-01", "05-05", "06-06", "08-15", "10-03", "10-09", "12-25"];
+            if (solarHolidays.includes(md)) return true;
+            if (SPECIAL_HOLIDAYS.has(dateStr)) return true;
+            return false;
+        };
+
+        const calculateWorkHours = (start, end, isDateHoliday, isForceHoliday) => {
+            if (!start || !end) return { work: 0, extra: 0, adjusted: 0, valid: false };
+            
+            const [sH, sM] = start.split(':').map(Number);
+            const [eH, eM] = end.split(':').map(Number);
+            
+            let startMin = sH * 60 + sM;
+            let endMin = eH * 60 + eM;
+            
+            if (endMin < startMin) endMin += 24 * 60;
+            
+            let diffMin = endMin - startMin;
+            let totalHours = diffMin / 60;
+            
+            const work = Math.max(0, totalHours - 1); 
+            let extra = 0, adjusted = 0;
+            
+            if (isDateHoliday || isForceHoliday) {
+                const regularHolidayWork = Math.min(8, work);
+                const overtimeHolidayWork = Math.max(0, work - 8);
+                adjusted = (regularHolidayWork * 1.5) + (overtimeHolidayWork * 2.0);
+                extra = overtimeHolidayWork; 
+            } else {
+                const overtimeWeekday = Math.max(0, work - 8);
+                adjusted = overtimeWeekday * 1.5;
+                extra = overtimeWeekday;
+            }
+            
+            return { 
+                work: parseFloat(work.toFixed(1)), 
+                extra: parseFloat(extra.toFixed(1)), 
+                adjusted: parseFloat(adjusted.toFixed(1)), 
+                valid: true 
+            };
+        };
+
+        const calculatePay = (info) => {
+            if (info.customPay) return parseInt(info.customPay) || 0;
+            const type = info.operationType || '공공예약';
+            const duration = info.duration || 1;
+            if (type !== '공공예약') return 0;
+            if (duration <= 1) return 12500;
+            return 35000 * duration;
+        };
+
+        const DEFAULT_DRIVERS = ["박기준", "변석현", "이명순", "김탁", "한상훈", "문인식", "황덕일", "강철규", "이상헌"];
+        const DEFAULT_VEHICLES = [
+            { id: 'B1', name: '1호차', plate: '4921', type: 'BUS', capacity: 2 },
+            { id: 'B2', name: '2호차', plate: '4922', type: 'BUS', capacity: 2 },
+            { id: 'B3', name: '3호차', plate: '1557', type: 'BUS', capacity: 2 },
+            { id: 'S11', name: '11호차', plate: '7711', type: 'SOLATI', capacity: 1 },
+            { id: 'S12', name: '12호차', plate: '7712', type: 'SOLATI', capacity: 1 },
+            { id: 'S13', name: '13호차', plate: '7713', type: 'SOLATI', capacity: 1 },
+            { id: 'S14', name: '14호차', plate: '7714', type: 'SOLATI', capacity: 1 }
+        ];
+
+        // --- 컴포넌트 ---
+        const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+        const AutoSaveInput = ({ value, onSave, className, placeholder, type = "text", ...props }) => {
+            const [localValue, setLocalValue] = useState(value || "");
+            useEffect(() => { setLocalValue(value || ""); }, [value]);
+            const handleChange = (e) => { setLocalValue(e.target.value); };
+            const handleBlur = () => { if (localValue !== (value || "")) { onSave(localValue); } };
+            const handleKeyDown = (e) => { if (e.key === 'Enter') { e.target.blur(); } }
+            return <input type={type} className={className} placeholder={placeholder} value={localValue} onChange={handleChange} onBlur={handleBlur} onKeyDown={handleKeyDown} {...props} />;
+        };
+
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [isLoading, setIsLoading] = useState(true);
+            const [selectedDateStr, setSelectedDateStr] = useState(new Date().toISOString().split('T')[0]);
+            const [viewDate, setViewDate] = useState(new Date());
+            
+            const [driverNames, setDriverNames] = useState([]);
+            const [vehiclesList, setVehiclesList] = useState([]);
+            const [scheduleData, setScheduleData] = useState({});
+            const [modal, setModal] = useState({ type: null, data: null });
+            const [autoLinked, setAutoLinked] = useState(false);
+            const [isCalendarExpanded, setIsCalendarExpanded] = useState(false); 
+            const [expandedStatsDriver, setExpandedStatsDriver] = useState(null);
+            
+            const [leftPanelWidth, setLeftPanelWidth] = useState(380);
+            const isDragging = useRef(false);
+            const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
+
+            useEffect(() => {
+                const handleResize = () => setIsDesktop(window.innerWidth >= 1024);
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
+            }, []);
+
+            const handleMouseDown = () => {
+                isDragging.current = true;
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            };
+
+            const handleMouseUp = () => {
+                isDragging.current = false;
+                document.body.style.cursor = 'default';
+                document.body.style.userSelect = 'auto';
+            };
+
+            const handleMouseMove = useCallback((e) => {
+                if (!isDragging.current) return;
+                const newWidth = Math.max(280, Math.min(600, e.clientX - 24));
+                setLeftPanelWidth(newWidth);
+            }, []);
+
+            useEffect(() => {
+                window.addEventListener('mousemove', handleMouseMove);
+                window.addEventListener('mouseup', handleMouseUp);
+                return () => {
+                    window.removeEventListener('mousemove', handleMouseMove);
+                    window.removeEventListener('mouseup', handleMouseUp);
+                };
+            }, [handleMouseMove]);
+
+            useEffect(() => {
+                const initAuth = async () => {
+                    // 환경변수가 없으므로 익명 로그인 시도
+                    if (!auth.currentUser) await auth.signInAnonymously();
+                };
+                initAuth();
+                const unsubscribeAuth = auth.onAuthStateChanged((u) => { if (u) setUser(u); });
+                return () => unsubscribeAuth();
+            }, []);
+
+            useEffect(() => {
+                if (!user) return;
+                
+                const unsubMaster = db.doc(`artifacts/${APP_ID}/public/data/settings/master`).onSnapshot((docSnap) => {
+                    if (docSnap.exists) {
+                        const data = docSnap.data();
+                        setDriverNames(data.driverNames || []);
+                        setVehiclesList(data.vehiclesList || []);
+                    } else {
+                        db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set({ driverNames: DEFAULT_DRIVERS, vehiclesList: DEFAULT_VEHICLES });
+                    }
+                    setIsLoading(false);
+                });
+
+                const unsubCalendar = db.collection(`artifacts/${APP_ID}/public/data/calendar`).onSnapshot((snapshot) => {
+                    const newSchedule = {};
+                    snapshot.forEach((doc) => { newSchedule[doc.id] = doc.data(); });
+                    setScheduleData(newSchedule);
+                });
+
+                return () => { unsubMaster(); unsubCalendar(); };
+            }, [user]);
+
+            const moveMonth = (offset) => {
+                const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + offset, 1);
+                setViewDate(newDate);
+            };
+
+            const calculateDispatchLogic = (dayData, drivers, vehicles) => {
+                if (!dayData) return [];
+                const currentRanks = dayData.driverRanks && dayData.driverRanks.length === drivers.length ? dayData.driverRanks : drivers.map((_, i) => i + 1);
+                let pool = drivers.map((nm, i) => ({ nm, id: i, active: dayData.driverStatus ? dayData.driverStatus[i] : true, rank: currentRanks[i] })).filter(d => d.active).sort((a, b) => a.rank - b.rank);
+                const resIds = Object.keys(dayData.reserved || {});
+                const sortedV = vehicles.filter(v => resIds.includes(v.id)).sort((a, b) => {
+                    const infoA = dayData.reserved[a.id];
+                    const infoB = dayData.reserved[b.id];
+                    if (a.type !== b.type) { return a.type === 'BUS' ? -1 : 1; }
+                    if (infoA.duration !== infoB.duration) { return infoA.duration - infoB.duration; }
+                    if ((infoA.km || 0) !== (infoB.km || 0)) { return (infoA.km || 0) - (infoB.km || 0); }
+                    if (a.type === 'BUS') {
+                        const getBusRank = (name) => {
+                            if (name.includes('3호')) return 1;
+                            if (name.includes('1호')) return 2;
+                            if (name.includes('2호')) return 3;
+                            return 4; 
+                        };
+                        return getBusRank(a.name) - getBusRank(b.name);
+                    }
+                    return a.name.localeCompare(b.name);
+                });
+
+                const result = [];
+                const manualAssignments = {}; 
+                Object.entries(dayData.overrides || {}).forEach(([key, dId]) => { manualAssignments[key] = dId; pool = pool.filter(p => p.id !== dId); });
+
+                sortedV.forEach(v => {
+                    const info = dayData.reserved[v.id];
+                    const slots = [];
+                    if (!info.isUnavailable) {
+                        for(let i=0; i<v.capacity; i++) {
+                            const key = `${v.id}_${i}`;
+                            if (manualAssignments[key] !== undefined) {
+                                const dId = manualAssignments[key];
+                                const driverName = drivers[dId];
+                                slots.push({ nm: driverName || '삭제됨', id: dId, type: 'manual', rank: currentRanks[dId] });
+                            } else if (pool.length > 0) {
+                                const driver = pool.shift();
+                                slots.push({ ...driver, type: 'auto' });
+                            } else {
+                                slots.push(null);
+                            }
+                        }
+                    }
+                    result.push({ vehicle: v, slots, info: dayData.reserved[v.id] });
+                });
+                return result;
+            };
+
+            const currentDayData = useMemo(() => {
+                const raw = scheduleData[selectedDateStr];
+                let isLinked = false;
+                if (raw && Object.keys(raw.reserved || {}).length > 0) {
+                    setAutoLinked(false);
+                    if (!raw.driverRanks || raw.driverRanks.length !== driverNames.length) {
+                        const newStatus = raw.driverStatus ? [...raw.driverStatus] : Array(driverNames.length).fill(true);
+                        const newRanks = raw.driverRanks ? [...raw.driverRanks] : Array.from({length: driverNames.length}, (_, i) => i + 1);
+                        while(newStatus.length < driverNames.length) newStatus.push(true);
+                        while(newStatus.length > driverNames.length) newStatus.pop();
+                        while(newRanks.length < driverNames.length) newRanks.push(newRanks.length + 1);
+                        while(newRanks.length > driverNames.length) newRanks.pop();
+                        return { ...raw, driverStatus: newStatus, driverRanks: newRanks };
+                    }
+                    return raw;
+                }
+                let initialRanks = Array.from({length: driverNames.length}, (_, i) => i + 1);
+                let initialStatus = raw && raw.driverStatus ? raw.driverStatus : Array(driverNames.length).fill(true);
+                if (initialStatus.length !== driverNames.length) { initialStatus = Array(driverNames.length).fill(true); }
+                const pastDates = Object.keys(scheduleData).filter(d => d < selectedDateStr).sort((a, b) => b.localeCompare(a));
+                let lastActiveData = null;
+                for (const dateStr of pastDates) {
+                    const d = scheduleData[dateStr];
+                    if (d.driverRanks && d.driverRanks.length === driverNames.length && d.reserved && Object.keys(d.reserved).length > 0) { lastActiveData = d; break; }
+                }
+                if (lastActiveData) {
+                    const lastDispatch = calculateDispatchLogic(lastActiveData, driverNames, vehiclesList);
+                    let lastDriverId = -1;
+                    for (let i = lastDispatch.length - 1; i >= 0; i--) {
+                        const item = lastDispatch[i];
+                        for (let j = item.slots.length - 1; j >= 0; j--) {
+                            if (item.slots[j] && item.slots[j].id !== -1) { lastDriverId = item.slots[j].id; break; }
+                        }
+                        if (lastDriverId !== -1) break;
+                    }
+                    if (lastDriverId !== -1) {
+                        const n = driverNames.length; const newRanks = Array(n).fill(0);
+                        let startIdx = (lastDriverId + 1) % n; let currentRank = 1;
+                        for (let k = 0; k < n; k++) { const targetIdx = (startIdx + k) % n; newRanks[targetIdx] = currentRank++; }
+                        initialRanks = newRanks; isLinked = true;
+                    }
+                } else {
+                    let lastSavedData = null;
+                    for (const dateStr of pastDates) {
+                        const d = scheduleData[dateStr];
+                        if (d.driverRanks && d.driverRanks.length === driverNames.length) { lastSavedData = d; break; }
+                    }
+                    if (lastSavedData) { initialRanks = [...lastSavedData.driverRanks]; isLinked = true; }
+                }
+                return { reserved: {}, driverStatus: initialStatus, driverRanks: initialRanks, overrides: {}, isHoliday: isPublicHoliday(selectedDateStr), _isLinked: isLinked };
+            }, [scheduleData, selectedDateStr, driverNames, vehiclesList]);
+
+            useEffect(() => {
+                if (currentDayData._isLinked) {
+                    setAutoLinked(true);
+                    const timer = setTimeout(() => setAutoLinked(false), 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, [currentDayData]);
+
+            const handleSaveDay = async (newData) => { const { _isLinked, ...dataToSave } = newData; await db.collection(`artifacts/${APP_ID}/public/data/calendar`).doc(selectedDateStr).set(dataToSave); };
+            const handleSaveMaster = async (nD, nV) => { await db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set({ driverNames: nD || driverNames, vehiclesList: nV || vehiclesList }); };
+
+            const addDriver = async (name) => { if (!name.trim() || driverNames.includes(name)) return; await handleSaveMaster([...driverNames, name.trim()], null); };
+            const removeDriver = async (idx) => { if (!confirm("삭제하시겠습니까?")) return; const nD = [...driverNames]; nD.splice(idx, 1); await handleSaveMaster(nD, null); };
+            const moveDriver = async (idx, dir) => { const nIdx = idx + dir; if (nIdx < 0 || nIdx >= driverNames.length) return; const nD = [...driverNames]; [nD[idx], nD[nIdx]] = [nD[nIdx], nD[idx]]; await handleSaveMaster(nD, null); };
+            const updateDriverName = async (idx, name) => { const nD = [...driverNames]; nD[idx] = name; await handleSaveMaster(nD, null); };
+            const sortDriversByRank = async () => {
+                const ids = driverNames.map((_, i) => i).sort((a, b) => currentDayData.driverRanks[a] - currentDayData.driverRanks[b]);
+                const newDriverNames = ids.map(i => driverNames[i]);
+                await handleSaveMaster(newDriverNames, null);
+                const newRanks = Array.from({length: newDriverNames.length}, (_, i) => i + 1);
+                const newData = { ...currentDayData, driverRanks: newRanks };
+                handleSaveDay(newData);
+            };
+            const addVehicle = async (name, plate, type) => { await handleSaveMaster(null, [...vehiclesList, { id: 'V_' + Date.now(), name, plate, type, capacity: type === 'BUS' ? 2 : 1 }]); };
+            const removeVehicle = async (id) => { if (confirm("삭제하시겠습니까?")) await handleSaveMaster(null, vehiclesList.filter(v => v.id !== id)); };
+
+            const toggleDriverStatus = (idx) => { 
+                const n = { ...currentDayData, driverStatus: [...currentDayData.driverStatus], overrides: { ...currentDayData.overrides } }; 
+                n.driverStatus[idx] = !n.driverStatus[idx]; 
+                if (!n.driverStatus[idx]) { Object.keys(n.overrides).forEach(key => { if (n.overrides[key] === idx) { delete n.overrides[key]; } }); }
+                handleSaveDay(n); 
+            };
+            
+            const updateDriverRank = (idx, val) => { const n = { ...currentDayData }; n.driverRanks[idx] = parseInt(val) || 0; handleSaveDay(n); };
+            const toggleVehicleReservation = (vId) => {
+                const n = { ...currentDayData, reserved: { ...currentDayData.reserved } };
+                if (n.reserved[vId]) {
+                    delete n.reserved[vId];
+                    const nO = { ...n.overrides };
+                    Object.keys(nO).forEach(k => { if (k.startsWith(vId)) delete nO[k]; });
+                    n.overrides = nO;
+                } else {
+                    n.reserved[vId] = { km: 0, duration: 1, destination: '', startTime: '09:00', endTime: '18:00', custName: '', custPhone: '', memo: '', operationType: '공공예약', isHolidayWork: false, customPay: 0 };
+                }
+                handleSaveDay(n);
+            };
+            const updateVehicleInfo = (vId, field, value) => { const n = { ...currentDayData, reserved: { ...currentDayData.reserved } }; if (n.reserved[vId]) { n.reserved[vId] = { ...n.reserved[vId], [field]: value }; handleSaveDay(n); } };
+            const applyReplacement = (targetKey, driverId) => { const n = { ...currentDayData, overrides: { ...currentDayData.overrides } }; if (driverId === null) delete n.overrides[targetKey]; else n.overrides[targetKey] = driverId; handleSaveDay(n); setModal({ type: null }); };
+            // applyKakaoData 삭제됨
+            const resetAll = async () => { if(confirm("모든 데이터를 초기화하시겠습니까?")) { await db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set({ driverNames: DEFAULT_DRIVERS, vehiclesList: DEFAULT_VEHICLES }); alert("운전자 명단과 차량 목록이 초기화되었습니다."); } }
+
+            const applyRotationFromYesterday = async () => {
+                const pastDates = Object.keys(scheduleData).filter(d => d < selectedDateStr).sort((a, b) => b.localeCompare(a));
+                let targetData = null; let targetDateStr = null;
+                for(const dStr of pastDates) { const d = scheduleData[dStr]; if (d.driverRanks && d.driverRanks.length === driverNames.length && d.reserved && Object.keys(d.reserved).length > 0) { targetData = d; targetDateStr = dStr; break; } }
+                if (!targetData) { for(const dStr of pastDates) { const d = scheduleData[dStr]; if (d.driverRanks && d.driverRanks.length === driverNames.length) { targetData = d; targetDateStr = dStr; break; } } }
+                if (!targetData) return alert("참조할 수 있는 이전 데이터가 없습니다.");
+                if (!confirm(`가장 최근 유의미한 기록(${targetDateStr})을 기준으로 재정렬하시겠습니까?`)) return;
+                let newRanks = [...targetData.driverRanks];
+                if (targetData.reserved && Object.keys(targetData.reserved).length > 0) {
+                    const yResult = calculateDispatchLogic(targetData, driverNames, vehiclesList);
+                    let lastDriverId = -1;
+                    for (let i = yResult.length - 1; i >= 0; i--) { const item = yResult[i]; for (let j = item.slots.length - 1; j >= 0; j--) { if (item.slots[j] && item.slots[j].id !== -1) { lastDriverId = item.slots[j].id; break; } } if (lastDriverId !== -1) break; }
+                    if (lastDriverId !== -1) { const n = driverNames.length; newRanks = Array(n).fill(0); let startIdx = (lastDriverId + 1) % n; let currentRank = 1; for (let k = 0; k < n; k++) { newRanks[(startIdx + k) % n] = currentRank++; } }
+                }
+                const newData = { ...currentDayData, driverRanks: newRanks };
+                const { _isLinked, ...dataToSave } = newData;
+                await handleSaveDay(dataToSave);
+                alert("순번이 연동되었습니다.");
+            };
+
+            const getDispatchResult = () => calculateDispatchLogic(currentDayData, driverNames, vehiclesList);
+
+            const renderCalendarContent = (isExpanded) => {
+                const cellHeight = isExpanded ? 'min-h-[150px]' : 'min-h-[80px]';
+                const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
+                return (
+                    <div className="border-t border-l border-slate-200 bg-slate-200">
+                        <div className={`grid grid-cols-7 gap-px border-b border-slate-200 bg-white`}>
+                            {weekDays.map((day, idx) => (<div key={day} className={`text-center text-xs font-bold py-2 ${idx === 0 ? "text-red-500" : idx === 6 ? "text-blue-500" : "text-slate-500"}`}>{day}</div>))}
+                        </div>
+                        <div className={`grid grid-cols-7 gap-px bg-slate-200`}>
+                            {Array.from({length: new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay()}).map((_, i) => (<div key={`empty-${i}`} className="bg-white/50"></div>))}
+                            {Array.from({length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate()}).map((_, i) => {
+                                const d = i + 1;
+                                const dStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                                const isSel = dStr === selectedDateStr;
+                                const isH = isPublicHoliday(dStr);
+                                const dayOfWeek = new Date(viewDate.getFullYear(), viewDate.getMonth(), d).getDay(); 
+                                let vehicleGroups = {};
+                                const checkAndAddItems = (checkDateStr, offset) => {
+                                    const data = scheduleData[checkDateStr];
+                                    if (data && data.reserved && Object.keys(data.reserved).length > 0) {
+                                        const dispatch = calculateDispatchLogic(data, driverNames, vehiclesList);
+                                        dispatch.forEach(item => {
+                                            if (item.info.duration > offset) {
+                                                let colorClass = "bg-slate-50 text-slate-800";
+                                                if (item.info.isUnavailable) { colorClass = "bg-red-100 text-red-600 border border-red-200"; } 
+                                                else if (item.info.duration === 2) { colorClass = "bg-green-100 text-green-700"; } 
+                                                else if (item.info.duration >= 3) { colorClass = "bg-sky-100 text-sky-700"; } 
+                                                else { if (item.info.operationType === '공공예약') colorClass = "bg-red-50 text-red-600"; else if (item.info.operationType === '시티투어') colorClass = "bg-blue-50 text-blue-600"; }
+                                                if (!vehicleGroups[item.vehicle.id]) { vehicleGroups[item.vehicle.id] = { name: item.vehicle.name, drivers: [], color: colorClass, isUnavailable: item.info.isUnavailable }; }
+                                                if (!item.info.isUnavailable) { item.slots.forEach(slot => { if (slot) vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank}); }); }
+                                            }
+                                        });
+                                    }
+                                };
+                                for(let k=0; k<7; k++) { const pDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), d - k); const pStr = `${pDate.getFullYear()}-${String(pDate.getMonth()+1).padStart(2,'0')}-${String(pDate.getDate()).padStart(2,'0')}`; checkAndAddItems(pStr, k); }
+                                return (
+                                    <div key={d} onClick={() => setSelectedDateStr(dStr)} className={`${cellHeight} p-1 text-xs font-bold transition relative cursor-pointer hover:bg-blue-50 bg-white flex flex-col items-start justify-start gap-1 ${isSel ? 'bg-blue-100 shadow-inner' : ''} ${!isSel && isH ? 'bg-red-50/30' : ''}`}>
+                                        <span className={`${!isSel && isH ? 'text-red-500' : dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-slate-700'} self-end mr-1`}>{d}</span>
+                                        <div className="w-full space-y-0.5 overflow-hidden">
+                                            {Object.values(vehicleGroups).map((group, gIdx) => (<div key={gIdx} className={`text-[9px] px-1 py-0.5 rounded truncate text-left whitespace-normal break-keep ${group.color}`}>{group.isUnavailable ? `⛔ ${group.name}` : `${group.name}: ${group.drivers.map(d => `${d.nm}(${d.rank})`).join(', ')}`}</div>))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            };
+
+            if (isLoading) return <div className="flex flex-col h-screen items-center justify-center"><div className="spinner"></div><p className="mt-4 font-bold text-slate-500">배차 시스템 로드 중...</p></div>;
+
+            return (
+                <div className="font-sans text-slate-800 bg-slate-50 min-h-screen">
+                    {isCalendarExpanded && (
+                        <div className="fixed inset-0 z-[100] bg-white flex flex-col h-screen w-screen">
+                            <div className="p-6 border-b shadow-sm bg-white flex justify-between items-center shrink-0">
+                                <h2 className="text-2xl font-black text-slate-800">{viewDate.getFullYear()}년 {viewDate.getMonth() + 1}월 전체 일정</h2>
+                                <button onClick={() => setIsCalendarExpanded(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3 rounded-xl font-bold flex items-center gap-2 text-lg shadow-sm border border-slate-200 transition-all hover:scale-105">
+                                    <Icons.ArrowLeft className="w-5 h-5"/> 돌아가기
+                                </button>
+                            </div>
+                            <div className="flex-grow p-6 overflow-auto bg-slate-50">{renderCalendarContent(true)}</div>
+                        </div>
+                    )}
+
+                    <header className="sticky top-0 bg-white/90 backdrop-blur border-b z-50 px-4 py-3 flex justify-between items-center shadow-sm">
+                        <div>
+                            <h1 className="text-xl font-extrabold text-blue-600 flex items-center gap-2"><Icons.Cloud className="w-6 h-6"/> 배차관리 <span className="text-slate-900">클라우드</span></h1>
+                            <div className="flex items-center gap-2">
+                                <p className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> 실시간 접속중</p>
+                                {autoLinked && <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold animate-bounce transition-all flex items-center gap-1"><Icons.Link className="w-3 h-3"/>전일 데이터 연동됨</span>}
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            {/* 전일연동 버튼 삭제됨 */}
+                            <button onClick={() => setModal({ type: 'stats' })} className="bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-emerald-600 transition flex items-center gap-1"><Icons.PieChart className="w-3 h-3"/>정산</button>
+                            <button onClick={resetAll} className="bg-slate-100 text-slate-500 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-red-50 hover:text-red-500 transition"><Icons.RotateCw className="w-3 h-3"/></button>
+                        </div>
+                    </header>
+
+                    <div className="p-4 md:p-6 flex flex-col lg:flex-row gap-6 relative">
+                        <div className="flex-shrink-0 space-y-6" style={{ width: isDesktop ? leftPanelWidth : '100%' }}>
+                            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
+                                <div className="flex justify-between items-center mb-4 font-bold">
+                                    <h2 className="text-lg">{viewDate.getFullYear()}년 {viewDate.getMonth() + 1}월</h2>
+                                    <div className="flex gap-1 items-center">
+                                        <button onClick={() => setIsCalendarExpanded(true)} className="w-8 h-8 rounded-full hover:bg-blue-50 text-blue-600 mr-2 flex items-center justify-center" title="확대보기"><Icons.Maximize className="w-4 h-4"/></button>
+                                        <button onClick={() => moveMonth(-1)} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center"><Icons.ChevronLeft className="w-4 h-4"/></button>
+                                        <button onClick={() => moveMonth(1)} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center"><Icons.ChevronRight className="w-4 h-4"/></button>
+                                    </div>
+                                </div>
+                                {renderCalendarContent(false)}
+                            </div>
+
+                            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
+                                <div className="flex justify-between items-center mb-4 font-bold">
+                                    <h2 className="text-sm">운전자 관리</h2>
+                                    <button onClick={sortDriversByRank} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100 font-bold">순번 정렬</button>
+                                </div>
+                                <div className="flex gap-2 mb-4">
+                                    <input type="text" id="addDriverInput" className="flex-grow text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold" placeholder="이름 입력" onKeyDown={(e) => { if(e.key==='Enter') { addDriver(e.target.value); e.target.value=''; }}} />
+                                    <button onClick={() => { const el = document.getElementById('addDriverInput'); addDriver(el.value); el.value=''; }} className="bg-blue-600 text-white w-8 h-8 rounded-lg flex items-center justify-center"><Icons.Plus className="w-4 h-4"/></button>
+                                </div>
+                                {/* 운전자 리스트 높이 조정 */}
+                                <div className="space-y-1 h-[500px] overflow-y-auto pr-1">
+                                    {driverNames.map((nm, i) => (
+                                        <div key={i} className={`flex items-center justify-between p-2 rounded-lg border text-xs font-bold group transition ${currentDayData.driverStatus[i] ? 'bg-white border-blue-100' : 'bg-slate-50 border-slate-200'}`}>
+                                            <div className="flex items-center gap-2 flex-grow">
+                                                <button onClick={() => toggleDriverStatus(i)} className={`px-2 py-1 rounded-md text-[10px] w-10 flex-shrink-0 transition-colors ${currentDayData.driverStatus[i] ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>{currentDayData.driverStatus[i] ? '출근' : '휴무'}</button>
+                                                <AutoSaveInput value={nm} onSave={(val) => updateDriverName(i, val)} className={`bg-transparent outline-none w-full ${!currentDayData.driverStatus[i] ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'}`} />
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <div className="flex flex-col">
+                                                    <button onClick={() => moveDriver(i, -1)} className="text-[8px] text-slate-300 hover:text-blue-500"><Icons.ChevronUp className="w-3 h-3"/></button>
+                                                    <button onClick={() => moveDriver(i, 1)} className="text-[8px] text-slate-300 hover:text-blue-500"><Icons.ChevronDown className="w-3 h-3"/></button>
+                                                </div>
+                                                <AutoSaveInput type="number" value={currentDayData.driverRanks[i]} onSave={(val) => updateDriverRank(i, val)} className="w-7 text-center border rounded bg-slate-50" />
+                                                <button onClick={() => removeDriver(i)} className="text-red-200 hover:text-red-500 ml-1"><Icons.Trash2 className="w-3 h-3"/></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="hidden lg:block w-2 bg-slate-200 hover:bg-blue-400 cursor-col-resize rounded-full transition-colors self-stretch flex-shrink-0 z-10" onMouseDown={handleMouseDown}></div>
+
+                        <div className="flex-1 min-w-0 space-y-6">
+                            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 min-h-[600px]">
+                                <div className="flex justify-between items-center mb-6 border-b pb-4 font-bold">
+                                    <div className="flex flex-col font-bold">
+                                        <span id="selectedDateLabel" className="text-blue-600 text-sm font-extrabold mb-1 font-bold">{selectedDateStr}</span>
+                                        <h2 className="text-xl font-black text-slate-800 font-bold">배차 예약 정보 입력</h2>
+                                    </div>
+                                    {/* 할증 적용 체크박스 삭제됨 */}
+                                </div>
+
+                                <div className="space-y-4">
+                                    {vehiclesList.map(v => {
+                                        const isReserved = !!currentDayData.reserved[v.id];
+                                        const info = isReserved ? currentDayData.reserved[v.id] : {};
+                                        const currentDispatch = getDispatchResult().find(d => d.vehicle.id === v.id);
+                                        const assignedDrivers = currentDispatch && currentDispatch.slots.filter(s => s).map(s => s.nm).join(', ');
+
+                                        return (
+                                            <div key={v.id} className={`p-4 rounded-2xl border-2 transition-all ${isReserved ? 'border-blue-500 bg-white shadow-md' : 'border-slate-100 bg-slate-50 opacity-70'} font-bold`}>
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <div className="flex flex-col">
+                                                        <label className="flex items-center gap-3 cursor-pointer">
+                                                            <input type="checkbox" checked={isReserved} onChange={() => toggleVehicleReservation(v.id)} className="w-5 h-5 rounded text-blue-600"/>
+                                                            <div><div className="text-sm font-black">{v.name}</div><div className="text-[10px] text-slate-400 font-mono">{v.plate}</div></div>
+                                                        </label>
+                                                        {isReserved && assignedDrivers && <div className="ml-8 mt-1 text-xs text-blue-600 font-bold flex items-center gap-1"><Icons.UserCheck className="w-3 h-3"/> {assignedDrivers}</div>}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {isReserved ? (
+                                                            <div className="flex gap-2">
+                                                                <button onClick={() => toggleVehicleReservation(v.id)} className="bg-red-100 text-red-500 text-[10px] px-2 py-1 rounded">삭제</button>
+                                                            </div>
+                                                        ) : (v.type === 'BUS' ? <Icons.Bus className="text-slate-300 w-5 h-5"/> : <Icons.BusFront className="text-slate-300 w-5 h-5"/>)}
+                                                    </div>
+                                                </div>
+                                                {isReserved && (
+                                                    <div className="mt-3 pt-3 border-t border-blue-50 space-y-3 animate-[fadeIn_0.2s_ease-out]">
+                                                        <label className="flex items-center gap-2 mb-2">
+                                                            <input type="checkbox" checked={info.isHolidayWork || false} onChange={(e) => updateVehicleInfo(v.id, 'isHolidayWork', e.target.checked)} className="w-4 h-4 text-orange-500 rounded"/>
+                                                            <span className="text-xs text-orange-600 font-bold">휴일 시간 적용</span>
+                                                        </label>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <AutoSaveInput value={info.custName} onSave={(val) => updateVehicleInfo(v.id, 'custName', val)} placeholder="예약자명" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
+                                                            <AutoSaveInput value={info.custPhone} onSave={(val) => updateVehicleInfo(v.id, 'custPhone', val)} placeholder="연락처" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
+                                                        </div>
+                                                        <AutoSaveInput value={info.destination} onSave={(val) => updateVehicleInfo(v.id, 'destination', val)} placeholder="행선지" className="w-full text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
+                                                        
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-[10px] text-slate-500 w-12 font-bold">운행형태</span>
+                                                                <select value={info.operationType || '공공예약'} onChange={(e) => updateVehicleInfo(v.id, 'operationType', e.target.value)} className="w-full text-xs border rounded-lg p-2 bg-slate-50 focus:bg-white outline-none font-bold">
+                                                                    <option value="공공예약">공공예약</option>
+                                                                    <option value="시티투어">시티투어</option>
+                                                                    <option value="성묘지원">성묘지원</option>
+                                                                    <option value="나들이">나들이</option>
+                                                                    <option value="기타">기타</option>
+                                                                </select>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 border rounded-lg p-1.5 bg-white"><input type="number" step="0.1" value={info.km} onChange={(e) => updateVehicleInfo(v.id, 'km', parseFloat(e.target.value) || 0)} className="w-full text-right text-xs border-none outline-none font-extrabold font-bold"/><span className="text-[10px] text-slate-400">km</span></div>
+                                                        </div>
+
+                                                        {(info.operationType === '성묘지원' || info.operationType === '나들이' || info.operationType === '시티투어') && (
+                                                            <div className="flex items-center gap-1 border border-emerald-300 rounded-lg p-1.5 bg-emerald-50">
+                                                                <span className="text-[10px] text-emerald-600 font-bold w-8">금액</span>
+                                                                <AutoSaveInput type="number" value={info.customPay} onSave={(val) => updateVehicleInfo(v.id, 'customPay', val)} placeholder="금액(원)" className="w-full text-right text-xs bg-transparent outline-none font-extrabold font-bold text-emerald-700"/>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div className="flex items-center gap-1"><span className="text-[10px] text-slate-400 w-6">출근</span><input type="time" value={info.startTime} onChange={(e) => updateVehicleInfo(v.id, 'startTime', e.target.value)} className="w-full text-xs border rounded-lg p-1.5 font-bold"/></div>
+                                                            <div className="flex items-center gap-1"><span className="text-[10px] text-slate-400 w-6">종료</span><input type="time" value={info.endTime} onChange={(e) => updateVehicleInfo(v.id, 'endTime', e.target.value)} className="w-full text-xs border rounded-lg p-1.5 font-bold"/></div>
+                                                        </div>
+                                                        <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', parseInt(e.target.value))} className="w-full text-center text-xs border rounded-lg p-2 bg-white font-bold mt-1">
+                                                            <option value={1}>당일 (1.25만)</option>
+                                                            <option value={2}>1박 (7.0만)</option>
+                                                            <option value={3}>2박 (10.5만)</option>
+                                                        </select>
+                                                        <AutoSaveInput value={info.memo} onSave={(val) => updateVehicleInfo(v.id, 'memo', val)} placeholder="메모" className="w-full text-xs border rounded-lg p-2 outline-none bg-slate-50 focus:bg-white mt-2"/>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            
+                            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
+                                <h2 className="text-sm font-extrabold mb-3">보유 차량 관리</h2>
+                                <div className="flex gap-2 mb-3 bg-slate-50 p-2 rounded-xl">
+                                    <input type="text" id="addVName" placeholder="호차명" className="w-1/3 text-xs border rounded p-1.5"/>
+                                    <input type="text" id="addVPlate" placeholder="번호" className="w-1/3 text-xs border rounded p-1.5"/>
+                                    <select id="addVType" className="w-1/3 text-xs border rounded p-1.5"><option value="BUS">버스</option><option value="SOLATI">솔라티</option></select>
+                                    <button onClick={()=>{ const n=document.getElementById('addVName').value, p=document.getElementById('addVPlate').value, t=document.getElementById('addVType').value; addVehicle(n,p,t); document.getElementById('addVName').value=''; document.getElementById('addVPlate').value=''; }} className="bg-slate-800 text-white w-10 rounded text-xs">등록</button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {vehiclesList.map(v => (
+                                        <div key={v.id} className="flex justify-between items-center p-2 border rounded-lg text-xs font-bold bg-white">
+                                            <span>{v.name}</span>
+                                            <button onClick={() => removeVehicle(v.id)} className="text-red-300 hover:text-red-500"><Icons.Trash2 className="w-3 h-3"/></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex-shrink-0 w-full lg:w-[380px]">
+                            <div className="bg-slate-900 rounded-3xl shadow-xl p-6 text-white min-h-[600px] border border-slate-800 font-bold">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-sm font-extrabold flex items-center gap-2"><Icons.Receipt className="text-emerald-400 w-4 h-4"/> 최종 배차 결과</h2>
+                                    <span className="text-xs text-slate-400 font-normal">{selectedDateStr}</span>
+                                </div>
+                                <div className="space-y-4">
+                                    {getDispatchResult().map((item, idx) => {
+                                        const t = calculateWorkHours(item.info.startTime, item.info.endTime, currentDayData.isHoliday, item.info.isHolidayWork);
+                                        const pay = calculatePay(item.info);
+                                        return (
+                                            <div key={idx} className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700 shadow-lg">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-xs text-blue-400 font-black">{item.vehicle.type[0]}</div>
+                                                        <div>
+                                                            <div className="text-sm font-black">{item.vehicle.name} <span className="text-[10px] text-slate-500 font-normal">{item.vehicle.plate}</span></div>
+                                                            <div className="text-[10px] text-emerald-400">{item.info.destination || '미입력'}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-300">{item.info.duration===1?'당일':(item.info.duration-1)+'박'}</span>
+                                                        <div className="text-[9px] text-slate-500 mt-1">{item.info.startTime}~{item.info.endTime}</div>
+                                                        <div className="mt-1"><span className="text-[9px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-800/50">{item.info.operationType || '공공예약'}</span></div>
+                                                    </div>
+                                                </div>
+                                                {item.info.custName && <div className="mb-3 px-2 py-1 bg-slate-700 rounded text-[10px] font-normal text-slate-300">예약: {item.info.custName} ({item.info.custPhone})</div>}
+                                                <div className="grid grid-cols-4 gap-2 py-2 border-y border-slate-700/50 mb-3 text-center text-[10px]">
+                                                    <div><div className="text-slate-500">실근무</div><div>{t.work}h</div></div>
+                                                    <div><div className="text-slate-500">{currentDayData.isHoliday || item.info.isHolidayWork ? '휴일' : '초과'}</div><div className="text-red-400">{t.extra}h</div></div>
+                                                    <div><div className="text-blue-400">인정</div><div className="text-sm text-blue-300 font-black">{t.adjusted}h</div></div>
+                                                    <div className="border-l border-slate-700"><div className="text-emerald-400">금액</div><div className="text-sm text-emerald-300 font-black">{pay.toLocaleString()}</div></div>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {item.slots.map((d, sIdx) => (d ? <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className={`flex-grow py-2 rounded-lg text-[11px] font-bold border flex items-center justify-center gap-1 ${d.type==='manual' ? 'bg-orange-900/30 border-orange-500/30 text-orange-200' : 'bg-slate-700 border-slate-600 text-blue-200'}`}>{d.nm} <span className="text-[9px] opacity-70 ml-1">({d.rank}순위)</span> {d.type==='manual' && <div className="w-1.5 h-1.5 bg-orange-400 rounded-full"></div>}</button> : <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className="flex-grow py-2 bg-red-900/20 border border-red-500/30 rounded-lg text-[11px] text-red-400 animate-pulse">공석</button>))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {modal.type === 'replace' && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl">
+                                <div className="p-4 border-b font-bold flex justify-between">
+                                    <h3>대체 운전자 선택</h3>
+                                    <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
+                                </div>
+                                <div className="p-2 max-h-[400px] overflow-y-auto">
+                                    {driverNames.map((nm, idx) => (
+                                        <button key={idx} onClick={() => applyReplacement(`${modal.data.vId}_${modal.data.sIdx}`, idx)} className="w-full p-3 text-left font-bold text-sm border-b border-slate-50 hover:bg-blue-50 flex justify-between">
+                                            <span>{currentDayData.driverRanks[idx]}위 {nm}</span>
+                                            <span className={`text-xs ${currentDayData.driverStatus[idx] ? 'text-blue-500' : 'text-slate-300'}`}>{currentDayData.driverStatus[idx] ? '출근' : '휴무'}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="p-3 border-t">
+                                    <button onClick={() => applyReplacement(`${modal.data.vId}_${modal.data.sIdx}`, null)} className="w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-lg">수동 배정 해제</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {modal.type === 'stats' && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-4xl rounded-2xl overflow-hidden shadow-2xl h-[80vh] flex flex-col">
+                                <div className="p-5 border-b font-bold flex justify-between bg-slate-50">
+                                    <h3>{viewDate.getFullYear()}년 {viewDate.getMonth()+1}월 정산</h3>
+                                    <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
+                                </div>
+                                <div className="flex-grow overflow-auto p-6">
+                                    <table className="w-full text-left font-bold text-sm">
+                                        <thead>
+                                            <tr className="text-slate-400 border-b text-xs uppercase"><th className="pb-2 pl-2">이름</th><th className="text-center pb-2">당일</th><th className="text-center pb-2">1박</th><th className="text-center pb-2">2박</th><th className="text-right pb-2">인정(h)</th><th className="text-right pb-2">수당(원)</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            {(() => {
+                                                const year = viewDate.getFullYear(), month = viewDate.getMonth();
+                                                const stats = driverNames.map(nm => ({ nm, c1:0, c2:0, c3:0, tA:0, tM:0, typeCounts: {} }));
+                                                const lastD = new Date(year, month + 1, 0).getDate();
+                                                for (let d = 1; d <= lastD; d++) {
+                                                    const dS = `${year}-${String(month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                                                    const data = scheduleData[dS];
+                                                    if (!data || !Object.keys(data.reserved).length) continue;
+                                                    let pool = driverNames.map((nm, i) => ({ nm, id: i, active: data.driverStatus[i], rank: data.driverRanks[i] })).filter(d => d.active).sort((a, b) => a.rank - b.rank);
+                                                    const manualAssigned = new Set();
+                                                    Object.values(data.overrides).forEach(id => manualAssigned.add(id));
+                                                    pool = pool.filter(p => !manualAssigned.has(p.id));
+                                                    const sortedV = vehiclesList.filter(v => data.reserved[v.id]).sort((a, b) => { const iA = data.reserved[a.id], iB = data.reserved[b.id]; if (iA.duration !== iB.duration) return iA.duration - iB.duration; if ((iA.km || 0) !== (iB.km || 0)) return (iA.km || 0) - (iB.km || 0); return a.name.localeCompare(b.name); });
+                                                    sortedV.forEach(v => {
+                                                        const info = data.reserved[v.id];
+                                                        if (info.isUnavailable) return; 
+                                                        const t = calculateWorkHours(info.startTime, info.endTime, data.isHoliday, info.isHolidayWork);
+                                                        if (!t.valid) return;
+                                                        const pay = calculatePay(info);
+                                                        for (let i = 0; i < v.capacity; i++) {
+                                                            const k = `${v.id}_${i}`;
+                                                            let dId = -1;
+                                                            if (data.overrides[k] !== undefined) { dId = data.overrides[k]; } else if (pool.length > 0) { dId = pool.shift().id; }
+                                                            if (dId !== -1 && stats[dId]) {
+                                                                if (info.duration === 1) stats[dId].c1++; else if (info.duration === 2) stats[dId].c2++; else stats[dId].c3++;
+                                                                stats[dId].tA += t.adjusted;
+                                                                stats[dId].tM += pay;
+                                                                const opType = info.operationType || '공공예약';
+                                                                stats[dId].typeCounts[opType] = (stats[dId].typeCounts[opType] || 0) + 1;
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                                return stats.map((s, i) => (
+                                                    <React.Fragment key={i}>
+                                                        <tr className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onClick={() => setExpandedStatsDriver(expandedStatsDriver === i ? null : i)}>
+                                                            <td className="py-3 pl-2 font-extrabold flex items-center gap-2">{s.nm} {expandedStatsDriver === i ? <Icons.ChevronUpCircle className="w-3 h-3 text-slate-400"/> : <Icons.ChevronDownCircle className="w-3 h-3 text-slate-400"/>}</td>
+                                                            <td className="text-center text-slate-400">{s.c1}</td>
+                                                            <td className="text-center text-blue-400">{s.c2}</td>
+                                                            <td className="text-center text-orange-400">{s.c3}</td>
+                                                            <td className="text-right text-blue-600 font-black">{s.tA.toFixed(1)}</td>
+                                                            <td className="text-right text-emerald-600 font-black">{s.tM.toLocaleString()}</td>
+                                                        </tr>
+                                                        {expandedStatsDriver === i && (
+                                                            <tr className="bg-slate-50 border-b border-slate-100">
+                                                                <td colSpan="6" className="p-3">
+                                                                    <div className="flex flex-wrap gap-2 text-xs">
+                                                                        {Object.entries(s.typeCounts).map(([type, count]) => (
+                                                                            <div key={type} className="px-2 py-1 bg-white border rounded-md shadow-sm">
+                                                                                <span className="text-slate-500 mr-1">{type}</span>
+                                                                                <span className="font-bold text-slate-800">{count}회</span>
+                                                                            </div>
+                                                                        ))}
+                                                                        {Object.keys(s.typeCounts).length === 0 && <span className="text-slate-400">운행 기록 없음</span>}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
+                                                ));
+                                            })()}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
