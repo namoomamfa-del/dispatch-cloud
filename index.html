@@ -115,10 +115,13 @@
                 const day = originalDateObj.getDay(); 
                 let subDate = new Date(originalDateObj);
                 let needed = false;
-                if (["설날 연휴", "설날", "추석 연휴", "추석", "어린이날", "삼일절", "광복절", "개천절", "한글날", "성탄절", "부처님오신날"].includes(name)) {
-                    if (day === 0 || (name === "어린이날" && day === 6) || (["설날 연휴", "추석 연휴"].includes(name) && day === 0)) needed = true;
-                    if(["삼일절","광복절","개천절","한글날","성탄절","부처님오신날"].includes(name) && (day===0 || day===6)) needed = true;
+
+                if (["설날 연휴", "설날", "추석 연휴", "추석"].includes(name)) {
+                    if (day === 0) needed = true;
+                } else if (name === "어린이날" || name === "삼일절" || name === "광복절" || name === "개천절" || name === "한글날" || name === "성탄절" || name === "부처님오신날") {
+                    if (day === 0 || day === 6) needed = true;
                 }
+
                 if (needed) {
                     subDate.setDate(subDate.getDate() + 1);
                     if (day === 6) subDate.setDate(subDate.getDate() + 1); 
@@ -151,6 +154,7 @@
                         holidays[prevDate.toISOString().split('T')[0]] = `${evt.name} 연휴`;
                         holidays[dateStr] = evt.name;
                         holidays[nextDate.toISOString().split('T')[0]] = `${evt.name} 연휴`;
+
                         [prevDate, dateObj, nextDate].forEach(d => {
                             if (d.getDay() === 0) {
                                 let sub = new Date(nextDate); sub.setDate(sub.getDate() + 1);
@@ -672,10 +676,6 @@
             };
             
             const updateDriverRank = (idx, val) => { 
-                // 자동 순번 모드에서는 수동 순번 변경이 의미 없을 수 있음.
-                // 하지만 사용자가 강제로 바꾸고 싶다면? -> 현재 로직상 allScheduleWithRanks에서 덮어씌워짐.
-                // 따라서 이 기능은 비활성화하거나, '수동 순번 모드'를 따로 두어야 함.
-                // 여기서는 일단 저장만 하도록 둠 (효과 없음)
                 const n = { ...currentDayData }; n.driverRanks[idx] = parseInt(val) || 0; handleSaveDay(n); 
             };
             const toggleVehicleReservation = (vId) => {
@@ -694,8 +694,6 @@
             const applyReplacement = (targetKey, driverId) => { const n = { ...currentDayData, overrides: { ...currentDayData.overrides } }; if (driverId === null) delete n.overrides[targetKey]; else n.overrides[targetKey] = driverId; handleSaveDay(n); setModal({ type: null }); };
             
             const applyRotationFromYesterday = async () => {
-                 // 자동 연동이므로 이 버튼 기능은 사실상 '새로고침'이나 '강제 재계산' 의미가 됨.
-                 // 현재 구조에서는 자동으로 되므로 알림만 표시
                  alert("현재 자동 순번 연동 모드입니다. 날짜를 이동하면 자동으로 적용됩니다.");
             };
 
@@ -724,24 +722,61 @@
                                 const dayOfWeek = new Date(viewDate.getFullYear(), viewDate.getMonth(), d).getDay(); 
 
                                 let vehicleGroups = {};
-                                (dayData.dispatchResult || []).forEach(item => {
-                                    let colorClass = "bg-slate-50 text-slate-800";
-                                    if (item.info.isUnavailable) { colorClass = "bg-red-100 text-red-600 border border-red-200"; } 
-                                    else if (item.info.duration === 2) { colorClass = "bg-green-100 text-green-700"; } 
-                                    else if (item.info.duration >= 3) { colorClass = "bg-sky-100 text-sky-700"; } 
-                                    else { if (item.info.operationType === '공공예약') colorClass = "bg-red-50 text-red-600"; else if (item.info.operationType === '시티투어') colorClass = "bg-blue-50 text-blue-600"; }
+                                let workingDriverIds = new Set(); // 이 날짜에 근무하는 운전자 ID 수집
+
+                                // 과거 6일까지 조회하여 연박 일정 확인
+                                for (let k = 0; k < 7; k++) {
+                                    const checkDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), d - k);
+                                    // 날짜 포맷팅 안전하게 처리
+                                    const checkYear = checkDate.getFullYear();
+                                    const checkMonth = String(checkDate.getMonth() + 1).padStart(2, '0');
+                                    const checkDay = String(checkDate.getDate()).padStart(2, '0');
+                                    const checkDateStr = `${checkYear}-${checkMonth}-${checkDay}`;
                                     
-                                    if (!vehicleGroups[item.vehicle.id]) { 
-                                        vehicleGroups[item.vehicle.id] = { name: item.vehicle.name, drivers: [], color: colorClass, isUnavailable: item.info.isUnavailable }; 
-                                    }
-                                    if (!item.info.isUnavailable) { 
-                                        item.slots.forEach(slot => { if (slot) vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank}); }); 
-                                    }
-                                });
+                                    const pastDayData = getCalculatedDayData(checkDateStr);
+                                    
+                                    (pastDayData.dispatchResult || []).forEach(item => {
+                                        // k일 전에 출발한 차량이 오늘(dStr)까지 운행하는지 확인
+                                        // k=0(당일): duration >= 1 (1 > 0 true) -> 표시
+                                        // k=1(어제): duration >= 2 (2 > 1 true) -> 표시 (1박2일차)
+                                        // k=2(그제): duration >= 3 (3 > 2 true) -> 표시 (2박3일차)
+                                        if (item.info.duration > k) {
+                                            let colorClass = "bg-slate-50 text-slate-800";
+                                             if (item.info.isUnavailable) { colorClass = "bg-red-100 text-red-600 border border-red-200"; } 
+                                            else if (item.info.duration === 2) { colorClass = "bg-green-100 text-green-700"; } 
+                                            else if (item.info.duration >= 3) { colorClass = "bg-sky-100 text-sky-700"; } 
+                                            else { if (item.info.operationType === '공공예약') colorClass = "bg-red-50 text-red-600"; else if (item.info.operationType === '시티투어') colorClass = "bg-blue-50 text-blue-600"; }
+                                            
+                                            // vehicleGroups에 추가 (차량 ID 기준 덮어쓰기 - 이미 있으면 무시해도 됨, 어차피 같은 차량)
+                                            if (!vehicleGroups[item.vehicle.id]) {
+                                                vehicleGroups[item.vehicle.id] = { 
+                                                    name: item.vehicle.name, 
+                                                    drivers: [], 
+                                                    color: colorClass, 
+                                                    isUnavailable: item.info.isUnavailable,
+                                                    duration: item.info.duration // 추가
+                                                };
+                                            }
+                                            
+                                            if (!item.info.isUnavailable) {
+                                                // drivers 채우기 (최초 1회만)
+                                                 if (vehicleGroups[item.vehicle.id].drivers.length === 0) {
+                                                     item.slots.forEach(slot => {
+                                                         if(slot) {
+                                                             vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank});
+                                                             workingDriverIds.add(slot.id); // 근무 중 운전자 ID 수집
+                                                         }
+                                                     });
+                                                 }
+                                            }
+                                        }
+                                    });
+                                }
 
                                 let offDriversStr = "";
                                 if (dayData && dayData.driverStatus && driverNames.length > 0) {
-                                    const offs = driverNames.filter((_, idx) => !dayData.driverStatus[idx]);
+                                    // 휴무이지만 실제로는 근무 중인 운전자는 휴무 명단에서 제외
+                                    const offs = driverNames.filter((_, idx) => !dayData.driverStatus[idx] && !workingDriverIds.has(idx));
                                     if (offs.length > 0) { offDriversStr = offs.join(', '); }
                                 }
                                 
@@ -753,7 +788,16 @@
                                             </span>
                                         </div>
                                         <div className="w-full space-y-0.5 overflow-hidden mt-1">
-                                            {Object.values(vehicleGroups).map((group, gIdx) => (<div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color}`}>{group.isUnavailable ? `⛔ ${group.name}` : `${group.name}: ${group.drivers.map(d => `${d.nm}(${d.rank})`).join(', ')}`}</div>))}
+                                            {Object.values(vehicleGroups).map((group, gIdx) => (
+                                                <div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color}`}>
+                                                    {group.duration > 1 && (
+                                                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 mr-1 text-[10px] font-black leading-none text-white bg-red-500 rounded shadow-sm">
+                                                            {group.duration - 1}박
+                                                        </span>
+                                                    )}
+                                                    {group.isUnavailable ? `⛔ ${group.name}` : `${group.name}: ${group.drivers.map(d => `${d.nm}(${d.rank})`).join(', ')}`}
+                                                </div>
+                                            ))}
                                         </div>
                                         {offDriversStr && (
                                             <div className="w-full mt-0.5 pt-0.5 border-t border-dashed border-slate-200">
@@ -771,11 +815,22 @@
             if (isLoading) return <div className="flex flex-col h-screen items-center justify-center"><div className="spinner"></div><p className="mt-4 font-bold text-slate-500">배차 시스템 로드 중...</p></div>;
 
             const currentOffDrivers = driverNames.filter((_, i) => !currentDayData.driverStatus[i]);
+            const workingDriverIds = new Set();
+            getDispatchResult().forEach(item => {
+                item.slots.forEach(slot => {
+                    if (slot) workingDriverIds.add(slot.id);
+                });
+            });
+            const realCurrentOffDrivers = currentOffDrivers.filter((nm, i) => {
+                 const originalIdx = driverNames.indexOf(nm);
+                 return !workingDriverIds.has(originalIdx);
+            });
+
             const excludedDriversList = Array.from(currentDayData._excludedIds || []).map(id => driverNames[id]).filter(n => n);
 
             return (
                 <div className="font-sans text-slate-800 bg-slate-50 min-h-screen">
-                    {/* ... (생략: 모달, 헤더 등) ... */}
+                    {/* ... (생략: 모달 및 헤더 부분은 이전과 동일) ... */}
                     {isCalendarExpanded && (
                         <div className="fixed inset-0 z-[100] bg-white flex flex-col h-screen w-screen">
                             <div className="p-6 border-b shadow-sm bg-white flex justify-between items-center shrink-0">
@@ -817,7 +872,7 @@
                                 </div>
                                 {renderCalendarContent(false)}
                             </div>
-
+                            
                             {/* 최종 배차 결과 */}
                             <div className="bg-white rounded-3xl shadow-sm p-6 text-slate-900 min-h-[400px] border border-slate-200 font-bold">
                                 <div className="flex justify-between items-center mb-6">
@@ -868,13 +923,13 @@
                                             <Icons.UserX className="w-3 h-3"/> <span>배차 제외 인원 (휴무/연박)</span>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
-                                            {currentOffDrivers.map((nm, i) => (
+                                            {realCurrentOffDrivers.map((nm, i) => (
                                                 <span key={`off-${i}`} className="px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold">휴무: {nm}</span>
                                             ))}
                                             {excludedDriversList.map((nm, i) => (
                                                 <span key={`excl-${i}`} className="px-2.5 py-1 rounded-md bg-orange-50 border border-orange-200 text-orange-600 text-xs font-bold">연박: {nm}</span>
                                             ))}
-                                            {currentOffDrivers.length === 0 && excludedDriversList.length === 0 && <span className="text-slate-400 text-xs pl-1">제외 인원 없음</span>}
+                                            {realCurrentOffDrivers.length === 0 && excludedDriversList.length === 0 && <span className="text-slate-400 text-xs pl-1">제외 인원 없음</span>}
                                         </div>
                                     </div>
                                 </div>
@@ -1000,7 +1055,8 @@
                         </div>
 
                     </div>
-                    {/* (모달 코드들 - vehicle, replace, data, stats - 유지) */}
+                    {/* ... (모달 컴포넌트들: vehicles, replace, data, stats - 이전과 동일하게 유지) ... */}
+                    {/* (생략된 모달 코드들은 이전 응답의 내용을 그대로 사용합니다) */}
                     {modal.type === 'vehicles' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl">
@@ -1038,7 +1094,6 @@
                             </div>
                         </div>
                     )}
-                    {/* (나머지 모달 코드들은 생략 없이 원본 유지) */}
                     {modal.type === 'replace' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl">
