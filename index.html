@@ -537,10 +537,17 @@
             const renderCalendarContent = (isExpanded) => {
                 const cellHeight = isExpanded ? 'min-h-[150px]' : 'min-h-[80px]';
                 const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
+                
+                // 확대 모드에 따른 폰트 크기 조정
+                const dateTextSize = isExpanded ? "text-lg font-extrabold" : "text-xs font-bold";
+                const holidayTextSize = isExpanded ? "text-xs" : "text-[10px]";
+                const groupTextSize = isExpanded ? "text-xs p-1" : "text-[9px] px-1 py-0.5";
+                const offTextSize = isExpanded ? "text-[10px]" : "text-[8px]";
+
                 return (
                     <div className="border-t border-l border-slate-200 bg-slate-200">
                         <div className={`grid grid-cols-7 gap-px border-b border-slate-200 bg-white`}>
-                            {weekDays.map((day, idx) => (<div key={day} className={`text-center text-xs font-bold py-2 ${idx === 0 ? "text-red-500" : idx === 6 ? "text-blue-500" : "text-slate-500"}`}>{day}</div>))}
+                            {weekDays.map((day, idx) => (<div key={day} className={`text-center font-bold py-2 ${isExpanded ? 'text-sm' : 'text-xs'} ${idx === 0 ? "text-red-500" : idx === 6 ? "text-blue-500" : "text-slate-500"}`}>{day}</div>))}
                         </div>
                         <div className={`grid grid-cols-7 gap-px bg-slate-200`}>
                             {Array.from({length: new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay()}).map((_, i) => (<div key={`empty-${i}`} className="bg-white/50"></div>))}
@@ -583,20 +590,20 @@
 
                                 for(let k=0; k<7; k++) { const pDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), d - k); const pStr = `${pDate.getFullYear()}-${String(pDate.getMonth()+1).padStart(2,'0')}-${String(pDate.getDate()).padStart(2,'0')}`; checkAndAddItems(pStr, k); }
                                 return (
-                                    <div key={d} onClick={() => setSelectedDateStr(dStr)} className={`${cellHeight} p-1 text-xs font-bold transition relative cursor-pointer hover:bg-blue-50 bg-white flex flex-col items-start justify-start gap-1 ${isSel ? 'bg-blue-100 shadow-inner' : ''} ${!isSel && isH ? 'bg-red-50/30' : ''}`}>
+                                    <div key={d} onClick={() => setSelectedDateStr(dStr)} className={`${cellHeight} p-1 transition relative cursor-pointer hover:bg-blue-50 bg-white flex flex-col items-start justify-start gap-1 ${isSel ? 'bg-blue-100 shadow-inner' : ''} ${!isSel && isH ? 'bg-red-50/30' : ''}`}>
                                         <div className="flex items-center justify-between w-full">
-                                            <span className={`${!isSel && isH ? 'text-red-500' : dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-slate-700'}`}>
+                                            <span className={`${dateTextSize} ${!isSel && isH ? 'text-red-500' : dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-slate-700'}`}>
                                                 {d}
-                                                {holidayName && <span className="text-[10px] ml-1 font-normal text-red-500 opacity-80 break-keep">{holidayName}</span>}
+                                                {holidayName && <span className={`${holidayTextSize} ml-1 font-normal text-red-500 opacity-80 break-keep`}>{holidayName}</span>}
                                             </span>
                                         </div>
                                         <div className="w-full space-y-0.5 overflow-hidden mt-1">
-                                            {Object.values(vehicleGroups).map((group, gIdx) => (<div key={gIdx} className={`text-[9px] px-1 py-0.5 rounded truncate text-left whitespace-normal break-keep ${group.color}`}>{group.isUnavailable ? `⛔ ${group.name}` : `${group.name}: ${group.drivers.map(d => `${d.nm}(${d.rank})`).join(', ')}`}</div>))}
+                                            {Object.values(vehicleGroups).map((group, gIdx) => (<div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color}`}>{group.isUnavailable ? `⛔ ${group.name}` : `${group.name}: ${group.drivers.map(d => `${d.nm}(${d.rank})`).join(', ')}`}</div>))}
                                         </div>
                                         {/* 휴무 인원 표시 */}
                                         {offDriversStr && (
                                             <div className="w-full mt-0.5 pt-0.5 border-t border-dashed border-slate-200">
-                                                <div className="text-[8px] text-slate-400 truncate">
+                                                <div className={`${offTextSize} text-slate-400 truncate`}>
                                                     <span className="text-red-300 font-bold mr-1">휴</span>{offDriversStr}
                                                 </div>
                                             </div>
