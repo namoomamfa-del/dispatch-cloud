@@ -17,6 +17,9 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         /* 애니메이션 */
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+        /* 테이블 스타일 */
+        .stats-table th, .stats-table td { white-space: nowrap; padding: 8px 12px; }
+        .stats-table th { position: sticky; top: 0; background: #f8fafc; z-index: 10; }
     </style>
 
     <!-- 2. React 및 Babel -->
@@ -31,6 +34,9 @@
 
     <!-- 4. 한국 음력 변환 라이브러리 -->
     <script src="https://cdn.jsdelivr.net/npm/korean-lunar-calendar/dist/korean-lunar-calendar.min.js"></script>
+
+    <!-- 5. 엑셀 변환 라이브러리 (SheetJS) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -85,13 +91,17 @@
             Search: ({className}) => <i className={`fa-solid fa-magnifying-glass ${className}`} />,
             ChevronDownCircle: ({className}) => <i className={`fa-solid fa-circle-chevron-down ${className}`} />,
             ChevronUpCircle: ({className}) => <i className={`fa-solid fa-circle-chevron-up ${className}`} />,
-            UserX: ({className}) => <i className={`fa-solid fa-user-xmark ${className}`} />
+            UserX: ({className}) => <i className={`fa-solid fa-user-xmark ${className}`} />,
+            Database: ({className}) => <i className={`fa-solid fa-database ${className}`} />,
+            Download: ({className}) => <i className={`fa-solid fa-download ${className}`} />,
+            Upload: ({className}) => <i className={`fa-solid fa-upload ${className}`} />,
+            FileExcel: ({className}) => <i className={`fa-solid fa-file-excel ${className}`} />,
+            Table: ({className}) => <i className={`fa-solid fa-table ${className}`} />,
+            Clock: ({className}) => <i className={`fa-regular fa-clock ${className}`} />,
+            Money: ({className}) => <i className={`fa-solid fa-won-sign ${className}`} />
         };
 
         // --- 공휴일 및 기념일 관리 (30년 자동 생성) ---
-        const HOLIDAY_CACHE = new Map(); // 계산된 공휴일 캐시
-
-        // 양력 고정 공휴일
         const SOLAR_HOLIDAYS = {
             "01-01": "신정",
             "03-01": "삼일절",
@@ -103,40 +113,32 @@
             "12-25": "성탄절"
         };
 
-        // 음력 일정 생성기 (2024~2054)
         const generateHolidays = () => {
             const calendar = new KoreanLunarCalendar();
             const holidays = {};
 
-            // 대체 공휴일 추가 헬퍼
             const addSubstitute = (dateStr, name, originalDateObj) => {
-                const day = originalDateObj.getDay(); // 0:일, 6:토
-                
+                const day = originalDateObj.getDay(); 
                 let subDate = new Date(originalDateObj);
                 let needed = false;
 
                 if (["설날 연휴", "설날", "추석 연휴", "추석"].includes(name)) {
-                    if (day === 0) needed = true; // 일요일 겹침
-                } else if (name === "어린이날") {
-                    if (day === 0 || day === 6) needed = true; // 주말 겹침
-                } else {
-                    if (day === 0 || day === 6) needed = true; // 주말 겹침
+                    if (day === 0) needed = true;
+                } else if (name === "어린이날" || name === "삼일절" || name === "광복절" || name === "개천절" || name === "한글날" || name === "성탄절" || name === "부처님오신날") {
+                    if (day === 0 || day === 6) needed = true;
                 }
 
                 if (needed) {
                     subDate.setDate(subDate.getDate() + 1);
                     if (day === 6) subDate.setDate(subDate.getDate() + 1); 
-                    
                     while (holidays[subDate.toISOString().split('T')[0]]) {
                         subDate.setDate(subDate.getDate() + 1);
                     }
-                    const subDateStr = subDate.toISOString().split('T')[0];
-                    holidays[subDateStr] = "대체공휴일";
+                    holidays[subDate.toISOString().split('T')[0]] = "대체공휴일";
                 }
             };
 
             for (let year = 2024; year <= 2054; year++) {
-                // 1. 양력 고정 휴일 등록
                 Object.entries(SOLAR_HOLIDAYS).forEach(([md, name]) => {
                     const dateStr = `${year}-${md}`;
                     holidays[dateStr] = name;
@@ -145,13 +147,7 @@
                     }
                 });
 
-                // 2. 음력 휴일 변환 및 등록
-                const lunarEvents = [
-                    { m: 1, d: 1, name: "설날" },
-                    { m: 4, d: 8, name: "부처님오신날" },
-                    { m: 8, d: 15, name: "추석" }
-                ];
-
+                const lunarEvents = [{ m: 1, d: 1, name: "설날" }, { m: 4, d: 8, name: "부처님오신날" }, { m: 8, d: 15, name: "추석" }];
                 lunarEvents.forEach(evt => {
                     calendar.setLunarDate(year, evt.m, evt.d, false);
                     const solar = calendar.getSolarCalendar();
@@ -160,26 +156,18 @@
 
                     if (evt.name === "설날" || evt.name === "추석") {
                         const prevDate = new Date(dateObj); prevDate.setDate(dateObj.getDate() - 1);
-                        const prevStr = prevDate.toISOString().split('T')[0];
-                        holidays[prevStr] = `${evt.name} 연휴`;
-                        
-                        holidays[dateStr] = evt.name;
-                        
                         const nextDate = new Date(dateObj); nextDate.setDate(dateObj.getDate() + 1);
-                        const nextStr = nextDate.toISOString().split('T')[0];
-                        holidays[nextStr] = `${evt.name} 연휴`;
+                        holidays[prevDate.toISOString().split('T')[0]] = `${evt.name} 연휴`;
+                        holidays[dateStr] = evt.name;
+                        holidays[nextDate.toISOString().split('T')[0]] = `${evt.name} 연휴`;
 
                         [prevDate, dateObj, nextDate].forEach(d => {
                             if (d.getDay() === 0) {
-                                let sub = new Date(nextDate);
-                                sub.setDate(sub.getDate() + 1);
-                                while(holidays[sub.toISOString().split('T')[0]]) {
-                                    sub.setDate(sub.getDate() + 1);
-                                }
+                                let sub = new Date(nextDate); sub.setDate(sub.getDate() + 1);
+                                while(holidays[sub.toISOString().split('T')[0]]) sub.setDate(sub.getDate() + 1);
                                 holidays[sub.toISOString().split('T')[0]] = "대체공휴일";
                             }
                         });
-
                     } else {
                         holidays[dateStr] = evt.name;
                         addSubstitute(dateStr, evt.name, dateObj);
@@ -190,11 +178,7 @@
         };
 
         const GENERATED_HOLIDAYS = generateHolidays();
-
-        const getHolidayName = (dateStr) => {
-            return GENERATED_HOLIDAYS[dateStr] || null;
-        };
-
+        const getHolidayName = (dateStr) => GENERATED_HOLIDAYS[dateStr] || null;
         const isPublicHoliday = (dateStr) => {
             if (!dateStr) return false;
             const dayOfWeek = new Date(dateStr).getDay();
@@ -204,21 +188,15 @@
 
         const calculateWorkHours = (start, end, isDateHoliday, isForceHoliday) => {
             if (!start || !end) return { work: 0, extra: 0, adjusted: 0, valid: false };
-            
             const [sH, sM] = start.split(':').map(Number);
             const [eH, eM] = end.split(':').map(Number);
-            
             let startMin = sH * 60 + sM;
             let endMin = eH * 60 + eM;
-            
             if (endMin < startMin) endMin += 24 * 60;
-            
             let diffMin = endMin - startMin;
             let totalHours = diffMin / 60;
-            
             const work = Math.max(0, totalHours - 1); 
             let extra = 0, adjusted = 0;
-            
             if (isDateHoliday || isForceHoliday) {
                 const regularHolidayWork = Math.min(8, work);
                 const overtimeHolidayWork = Math.max(0, work - 8);
@@ -229,13 +207,7 @@
                 adjusted = overtimeWeekday * 1.5;
                 extra = overtimeWeekday;
             }
-            
-            return { 
-                work: parseFloat(work.toFixed(1)), 
-                extra: parseFloat(extra.toFixed(1)), 
-                adjusted: parseFloat(adjusted.toFixed(1)), 
-                valid: true 
-            };
+            return { work: parseFloat(work.toFixed(1)), extra: parseFloat(extra.toFixed(1)), adjusted: parseFloat(adjusted.toFixed(1)), valid: true };
         };
 
         const calculatePay = (info) => {
@@ -284,7 +256,15 @@
             const [isCalendarExpanded, setIsCalendarExpanded] = useState(false); 
             const [expandedStatsDriver, setExpandedStatsDriver] = useState(null);
             
-            const [leftPanelWidth, setLeftPanelWidth] = useState(380);
+            // 정산 모드 (monthly, yearly) 및 상태
+            const [statsMode, setStatsMode] = useState('monthly');
+            const [statsYear, setStatsYear] = useState(new Date().getFullYear());
+            const [statsMonth, setStatsMonth] = useState(new Date().getMonth());
+            const [yearlyViewType, setYearlyViewType] = useState('money'); // 'money' or 'hours'
+
+            const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
+                return window.innerWidth >= 1024 ? window.innerWidth * 0.5 : 380;
+            });
             const isDragging = useRef(false);
             const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
 
@@ -294,38 +274,19 @@
                 return () => window.removeEventListener('resize', handleResize);
             }, []);
 
-            const handleMouseDown = () => {
-                isDragging.current = true;
-                document.body.style.cursor = 'col-resize';
-                document.body.style.userSelect = 'none';
-            };
-
-            const handleMouseUp = () => {
-                isDragging.current = false;
-                document.body.style.cursor = 'default';
-                document.body.style.userSelect = 'auto';
-            };
-
-            const handleMouseMove = useCallback((e) => {
-                if (!isDragging.current) return;
-                const newWidth = Math.max(280, Math.min(600, e.clientX - 24));
-                setLeftPanelWidth(newWidth);
+            const handleMouseDown = () => { isDragging.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; };
+            const handleMouseUp = () => { isDragging.current = false; document.body.style.cursor = 'default'; document.body.style.userSelect = 'auto'; };
+            const handleMouseMove = useCallback((e) => { 
+                if (!isDragging.current) return; 
+                const maxWidth = window.innerWidth * 0.8;
+                const newWidth = Math.max(280, Math.min(maxWidth, e.clientX - 24)); 
+                setLeftPanelWidth(newWidth); 
             }, []);
 
-            useEffect(() => {
-                window.addEventListener('mousemove', handleMouseMove);
-                window.addEventListener('mouseup', handleMouseUp);
-                return () => {
-                    window.removeEventListener('mousemove', handleMouseMove);
-                    window.removeEventListener('mouseup', handleMouseUp);
-                };
-            }, [handleMouseMove]);
+            useEffect(() => { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }; }, [handleMouseMove]);
 
             useEffect(() => {
-                const initAuth = async () => {
-                    // 환경변수가 없으므로 익명 로그인 시도
-                    if (!auth.currentUser) await auth.signInAnonymously();
-                };
+                const initAuth = async () => { if (!auth.currentUser) await auth.signInAnonymously(); };
                 initAuth();
                 const unsubscribeAuth = auth.onAuthStateChanged((u) => { if (u) setUser(u); });
                 return () => unsubscribeAuth();
@@ -333,30 +294,154 @@
 
             useEffect(() => {
                 if (!user) return;
-                
                 const unsubMaster = db.doc(`artifacts/${APP_ID}/public/data/settings/master`).onSnapshot((docSnap) => {
-                    if (docSnap.exists) {
-                        const data = docSnap.data();
-                        setDriverNames(data.driverNames || []);
-                        setVehiclesList(data.vehiclesList || []);
-                    } else {
-                        db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set({ driverNames: DEFAULT_DRIVERS, vehiclesList: DEFAULT_VEHICLES });
-                    }
+                    if (docSnap.exists) { const data = docSnap.data(); setDriverNames(data.driverNames || []); setVehiclesList(data.vehiclesList || []); } 
+                    else { db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set({ driverNames: DEFAULT_DRIVERS, vehiclesList: DEFAULT_VEHICLES }); }
                     setIsLoading(false);
                 });
-
                 const unsubCalendar = db.collection(`artifacts/${APP_ID}/public/data/calendar`).onSnapshot((snapshot) => {
-                    const newSchedule = {};
-                    snapshot.forEach((doc) => { newSchedule[doc.id] = doc.data(); });
-                    setScheduleData(newSchedule);
+                    const newSchedule = {}; snapshot.forEach((doc) => { newSchedule[doc.id] = doc.data(); }); setScheduleData(newSchedule);
                 });
-
                 return () => { unsubMaster(); unsubCalendar(); };
             }, [user]);
 
-            const moveMonth = (offset) => {
-                const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + offset, 1);
-                setViewDate(newDate);
+            const moveMonth = (offset) => { const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + offset, 1); setViewDate(newDate); };
+
+            const changeStatsMonth = (offset) => {
+                let newMonth = statsMonth + offset;
+                let newYear = statsYear;
+                if (newMonth > 11) { newMonth = 0; newYear++; }
+                else if (newMonth < 0) { newMonth = 11; newYear--; }
+                setStatsMonth(newMonth);
+                setStatsYear(newYear);
+            };
+
+            const handleBackup = () => {
+                const data = { version: 1, timestamp: new Date().toISOString(), master: { driverNames, vehiclesList }, calendar: scheduleData };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `dispatch_backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
+            };
+
+            const handleRestore = async (e) => {
+                const file = e.target.files[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        if (!confirm("현재 데이터를 덮어쓰고 백업 데이터를 복원하시겠습니까?")) return;
+                        setIsLoading(true);
+                        if (data.master) await db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set(data.master);
+                        if (data.calendar) { await Promise.all(Object.entries(data.calendar).map(([date, dayData]) => db.collection(`artifacts/${APP_ID}/public/data/calendar`).doc(date).set(dayData))); }
+                        alert("데이터 복원 완료"); setModal({ type: null });
+                    } catch (err) { alert("오류 발생"); console.error(err); } finally { setIsLoading(false); }
+                };
+                reader.readAsText(file);
+            };
+
+            const calculateMonthlyStats = (year, month) => {
+                const stats = driverNames.map(nm => ({ nm, c1:0, c2:0, c3:0, tA:0, tM:0, typeCounts: {} }));
+                const lastD = new Date(year, month + 1, 0).getDate();
+                
+                for (let d = 1; d <= lastD; d++) {
+                    const dS = `${year}-${String(month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const data = scheduleData[dS];
+                    if (!data || !Object.keys(data.reserved).length) continue;
+
+                    const currentRanks = data.driverRanks || [];
+                    let pool = driverNames.map((nm, i) => ({ nm, id: i, active: data.driverStatus[i], rank: currentRanks[i] })).filter(d => d.active).sort((a, b) => a.rank - b.rank);
+                    const manualAssigned = new Set();
+                    Object.values(data.overrides).forEach(id => manualAssigned.add(id));
+                    pool = pool.filter(p => !manualAssigned.has(p.id));
+
+                    const sortedV = vehiclesList.filter(v => data.reserved[v.id]).sort((a, b) => {
+                        const iA = data.reserved[a.id], iB = data.reserved[b.id];
+                        if (iA.duration !== iB.duration) return iA.duration - iB.duration;
+                        return a.name.localeCompare(b.name);
+                    });
+
+                    sortedV.forEach(v => {
+                        const info = data.reserved[v.id];
+                        if (info.isUnavailable) return;
+                        const t = calculateWorkHours(info.startTime, info.endTime, data.isHoliday, info.isHolidayWork);
+                        if (!t.valid) return;
+                        const pay = calculatePay(info);
+
+                        for (let i = 0; i < v.capacity; i++) {
+                            const k = `${v.id}_${i}`;
+                            let dId = -1;
+                            if (data.overrides[k] !== undefined) { dId = data.overrides[k]; } else if (pool.length > 0) { dId = pool.shift().id; }
+                            
+                            if (dId !== -1 && stats[dId]) {
+                                if (info.duration === 1) stats[dId].c1++; else if (info.duration === 2) stats[dId].c2++; else stats[dId].c3++;
+                                stats[dId].tA += t.adjusted;
+                                stats[dId].tM += pay;
+                                const opType = info.operationType || '공공예약';
+                                stats[dId].typeCounts[opType] = (stats[dId].typeCounts[opType] || 0) + 1;
+                            }
+                        }
+                    });
+                }
+                return stats;
+            };
+
+            const calculateYearlyStats = (year) => {
+                const stats = driverNames.map(nm => ({ nm, months: Array.from({length: 12}, () => ({m: 0, h: 0})), totalMoney: 0, totalHours: 0 }));
+                for (let m = 0; m < 12; m++) {
+                    const monthlyData = calculateMonthlyStats(year, m);
+                    monthlyData.forEach((d, idx) => {
+                        stats[idx].months[m].m = d.tM;
+                        stats[idx].months[m].h = d.tA;
+                        stats[idx].totalMoney += d.tM;
+                        stats[idx].totalHours += d.tA;
+                    });
+                }
+                return stats;
+            };
+
+            const handleDownloadExcel = () => {
+                if (statsMode === 'monthly') {
+                    const stats = calculateMonthlyStats(statsYear, statsMonth);
+                    const yearlyStats = calculateYearlyStats(statsYear);
+                    const excelData = stats.map((s, idx) => {
+                        const details = Object.entries(s.typeCounts).map(([type, count]) => `${type} ${count}회`).join(', ');
+                        return { '이름': s.nm, '당일(회)': s.c1, '1박(회)': s.c2, '2박(회)': s.c3, '인정 시간(h)': s.tA.toFixed(1), '금월 수당(원)': s.tM, '금년 누적(원)': yearlyStats[idx].totalMoney, '상세 내역': details || '운행 없음' };
+                    });
+                    const totalMonth = stats.reduce((sum, s) => sum + s.tM, 0);
+                    const totalMonthHours = stats.reduce((sum, s) => sum + s.tA, 0);
+                    const totalYear = yearlyStats.reduce((sum, s) => sum + s.totalMoney, 0);
+                    excelData.push({ '이름': '총계', '인정 시간(h)': totalMonthHours.toFixed(1), '금월 수당(원)': totalMonth, '금년 누적(원)': totalYear });
+                    const wb = XLSX.utils.book_new();
+                    const ws = XLSX.utils.json_to_sheet(excelData);
+                    XLSX.utils.book_append_sheet(wb, ws, `${statsYear}년_${statsMonth+1}월_정산`);
+                    XLSX.writeFile(wb, `배차정산_${statsYear}년_${statsMonth+1}월.xlsx`);
+                } else {
+                    const stats = calculateYearlyStats(statsYear);
+                    const excelData = stats.map(s => {
+                        const row = { '이름': s.nm };
+                        if (yearlyViewType === 'money') {
+                            s.months.forEach((d, idx) => { row[`${idx+1}월`] = d.m; });
+                            row['총 인정시간(h)'] = s.totalHours.toFixed(1); row['총 수당(원)'] = s.totalMoney;
+                        } else {
+                            s.months.forEach((d, idx) => { row[`${idx+1}월`] = d.h.toFixed(1); });
+                            row['총 인정시간(h)'] = s.totalHours.toFixed(1); row['총 수당(원)'] = s.totalMoney;
+                        }
+                        return row;
+                    });
+                    const totalRow = { '이름': '월별 합계' };
+                    let grandTotalMoney = 0; let grandTotalHours = 0;
+                    for (let m = 0; m < 12; m++) {
+                        const mTotalMoney = stats.reduce((sum, s) => sum + s.months[m].m, 0);
+                        const mTotalHours = stats.reduce((sum, s) => sum + s.months[m].h, 0);
+                        if (yearlyViewType === 'money') totalRow[`${m+1}월`] = mTotalMoney; else totalRow[`${m+1}월`] = mTotalHours.toFixed(1);
+                        grandTotalMoney += mTotalMoney; grandTotalHours += mTotalHours;
+                    }
+                    totalRow['총 인정시간(h)'] = grandTotalHours.toFixed(1); totalRow['총 수당(원)'] = grandTotalMoney;
+                    excelData.push(totalRow);
+                    const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(excelData);
+                    XLSX.utils.book_append_sheet(wb, ws, `${statsYear}년_연간정산`);
+                    XLSX.writeFile(wb, `연간배차정산_${statsYear}년_${yearlyViewType === 'money' ? '수당' : '인정시간'}.xlsx`);
+                }
             };
 
             const calculateDispatchLogic = (dayData, drivers, vehicles) => {
@@ -537,8 +622,6 @@
             const renderCalendarContent = (isExpanded) => {
                 const cellHeight = isExpanded ? 'min-h-[220px]' : 'min-h-[80px]';
                 const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
-                
-                // 확대 모드에 따른 폰트 크기 조정
                 const dateTextSize = isExpanded ? "text-2xl font-extrabold" : "text-xs font-bold";
                 const holidayTextSize = isExpanded ? "text-sm" : "text-[10px]";
                 const groupTextSize = isExpanded ? "text-sm p-1.5" : "text-[9px] px-1 py-0.5";
@@ -558,7 +641,6 @@
                                 const isH = isPublicHoliday(dStr);
                                 const holidayName = getHolidayName(dStr); 
                                 const dayOfWeek = new Date(viewDate.getFullYear(), viewDate.getMonth(), d).getDay(); 
-                                
                                 let vehicleGroups = {};
                                 const checkAndAddItems = (checkDateStr, offset) => {
                                     const data = scheduleData[checkDateStr];
@@ -577,35 +659,26 @@
                                         });
                                     }
                                 };
-                                
-                                // 해당 날짜의 휴무 인원 확인
                                 const dayData = scheduleData[dStr];
                                 let offDriversStr = "";
                                 if (dayData && dayData.driverStatus && driverNames.length > 0) {
                                     const offs = driverNames.filter((_, idx) => !dayData.driverStatus[idx]);
-                                    if (offs.length > 0) {
-                                        offDriversStr = offs.join(', ');
-                                    }
+                                    if (offs.length > 0) { offDriversStr = offs.join(', '); }
                                 }
-
                                 for(let k=0; k<7; k++) { const pDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), d - k); const pStr = `${pDate.getFullYear()}-${String(pDate.getMonth()+1).padStart(2,'0')}-${String(pDate.getDate()).padStart(2,'0')}`; checkAndAddItems(pStr, k); }
                                 return (
                                     <div key={d} onClick={() => setSelectedDateStr(dStr)} className={`${cellHeight} p-1 transition relative cursor-pointer hover:bg-blue-50 bg-white flex flex-col items-start justify-start gap-1 ${isSel ? 'bg-blue-100 shadow-inner' : ''} ${!isSel && isH ? 'bg-red-50/30' : ''}`}>
                                         <div className="flex items-center justify-between w-full">
                                             <span className={`${dateTextSize} ${!isSel && isH ? 'text-red-500' : dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-slate-700'}`}>
-                                                {d}
-                                                {holidayName && <span className={`${holidayTextSize} ml-1 font-normal text-red-500 opacity-80 break-keep`}>{holidayName}</span>}
+                                                {d} {holidayName && <span className={`${holidayTextSize} ml-1 font-normal text-red-500 opacity-80 break-keep`}>{holidayName}</span>}
                                             </span>
                                         </div>
                                         <div className="w-full space-y-0.5 overflow-hidden mt-1">
                                             {Object.values(vehicleGroups).map((group, gIdx) => (<div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color}`}>{group.isUnavailable ? `⛔ ${group.name}` : `${group.name}: ${group.drivers.map(d => `${d.nm}(${d.rank})`).join(', ')}`}</div>))}
                                         </div>
-                                        {/* 휴무 인원 표시 */}
                                         {offDriversStr && (
                                             <div className="w-full mt-0.5 pt-0.5 border-t border-dashed border-slate-200">
-                                                <div className={`${offTextSize} text-slate-400 truncate`}>
-                                                    <span className="text-red-300 font-bold mr-1">휴</span>{offDriversStr}
-                                                </div>
+                                                <div className={`${offTextSize} text-slate-400 truncate`}><span className="text-red-300 font-bold mr-1">휴</span>{offDriversStr}</div>
                                             </div>
                                         )}
                                     </div>
@@ -618,7 +691,6 @@
 
             if (isLoading) return <div className="flex flex-col h-screen items-center justify-center"><div className="spinner"></div><p className="mt-4 font-bold text-slate-500">배차 시스템 로드 중...</p></div>;
 
-            // 현재 선택된 날짜의 휴무 인원 계산
             const currentOffDrivers = driverNames.filter((_, i) => !currentDayData.driverStatus[i]);
 
             return (
@@ -644,7 +716,9 @@
                             </div>
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={() => setModal({ type: 'stats' })} className="bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-emerald-600 transition flex items-center gap-1"><Icons.PieChart className="w-3 h-3"/>정산</button>
+                            <button onClick={() => setModal({ type: 'vehicles' })} className="bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-indigo-600 transition flex items-center gap-1"><Icons.Bus className="w-3 h-3"/>차량 관리</button>
+                            <button onClick={() => setModal({ type: 'data' })} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-slate-200 transition flex items-center gap-1"><Icons.Database className="w-3 h-3"/>데이터 관리</button>
+                            <button onClick={() => { setStatsYear(viewDate.getFullYear()); setStatsMonth(viewDate.getMonth()); setModal({ type: 'stats' }); }} className="bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-emerald-600 transition flex items-center gap-1"><Icons.PieChart className="w-3 h-3"/>정산</button>
                             <button onClick={resetAll} className="bg-slate-100 text-slate-500 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-red-50 hover:text-red-500 transition"><Icons.RotateCw className="w-3 h-3"/></button>
                         </div>
                     </header>
@@ -661,6 +735,65 @@
                                     </div>
                                 </div>
                                 {renderCalendarContent(false)}
+                            </div>
+
+                            {/* 최종 배차 결과 (이동됨) */}
+                            <div className="bg-white rounded-3xl shadow-sm p-6 text-slate-900 min-h-[400px] border border-slate-200 font-bold">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-sm font-extrabold flex items-center gap-2"><Icons.Receipt className="text-emerald-600 w-4 h-4"/> 최종 배차 결과</h2>
+                                    <span className="text-xs text-slate-500 font-normal">{selectedDateStr}</span>
+                                </div>
+                                <div className="space-y-4">
+                                    {getDispatchResult().map((item, idx) => {
+                                        const t = calculateWorkHours(item.info.startTime, item.info.endTime, currentDayData.isHoliday, item.info.isHolidayWork);
+                                        const pay = calculatePay(item.info);
+                                        return (
+                                            <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm transition-all hover:bg-white hover:shadow-md">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-xs text-blue-600 font-black shadow-sm">{item.vehicle.type[0]}</div>
+                                                        <div>
+                                                            <div className="text-sm font-black text-slate-800">{item.vehicle.name} <span className="text-[10px] text-slate-500 font-normal">{item.vehicle.plate}</span></div>
+                                                            <div className="text-[10px] text-emerald-600 font-bold">{item.info.destination || '미입력'}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-500 shadow-sm">{item.info.duration===1?'당일':(item.info.duration-1)+'박'}</span>
+                                                        <div className="text-[9px] text-slate-500 mt-1">{item.info.startTime}~{item.info.endTime}</div>
+                                                        <div className="mt-1"><span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100 font-bold">{item.info.operationType || '공공예약'}</span></div>
+                                                    </div>
+                                                </div>
+                                                {item.info.custName && <div className="mb-3 px-2 py-1 bg-white border border-slate-100 rounded text-[10px] font-normal text-slate-600 shadow-sm">예약: {item.info.custName} ({item.info.custPhone})</div>}
+                                                <div className="grid grid-cols-4 gap-2 py-2 border-y border-slate-200 mb-3 text-center text-[10px]">
+                                                    <div><div className="text-slate-400">실근무</div><div className="font-bold text-slate-700">{t.work}h</div></div>
+                                                    <div><div className="text-slate-400">{currentDayData.isHoliday || item.info.isHolidayWork ? '휴일' : '초과'}</div><div className="text-red-500 font-bold">{t.extra}h</div></div>
+                                                    <div><div className="text-blue-500">인정</div><div className="text-sm text-blue-600 font-black">{t.adjusted}h</div></div>
+                                                    <div className="border-l border-slate-200"><div className="text-emerald-500">금액</div><div className="text-sm text-emerald-600 font-black">{pay.toLocaleString()}</div></div>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {item.slots.map((d, sIdx) => (d ? 
+                                                        <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className={`flex-grow py-2 rounded-lg text-[11px] font-bold border flex items-center justify-center gap-1 shadow-sm transition-all ${d.type==='manual' ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'}`}>
+                                                            {d.nm} <span className="text-[9px] opacity-60 ml-1 font-normal">({d.rank}순위)</span> {d.type==='manual' && <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}
+                                                        </button> : 
+                                                        <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className="flex-grow py-2 bg-red-50 border border-red-100 rounded-lg text-[11px] text-red-400 animate-pulse hover:bg-red-100">공석</button>))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {getDispatchResult().length === 0 && <div className="text-center py-20 text-slate-400 text-xs italic">예약 내역이 없습니다.</div>}
+                                    
+                                    {/* 휴무 인원 표시 영역 */}
+                                    <div className="mt-4 pt-4 border-t border-slate-200">
+                                        <div className="flex items-center gap-2 mb-2 text-slate-500 text-xs font-bold">
+                                            <Icons.UserX className="w-3 h-3"/> <span>금일 휴무 ({currentOffDrivers.length})</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {currentOffDrivers.length > 0 ? currentOffDrivers.map((nm, i) => (
+                                                <span key={i} className="px-2 py-1 rounded bg-slate-100 border border-slate-200 text-slate-500 text-xs font-medium">{nm}</span>
+                                            )) : <span className="text-slate-400 text-xs">휴무 인원 없음</span>}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
@@ -697,6 +830,7 @@
 
                         <div className="flex-1 min-w-0 space-y-6">
                             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 min-h-[600px]">
+                                {/* ... 배차 예약 정보 입력 헤더 및 리스트 ... */}
                                 <div className="flex justify-between items-center mb-6 border-b pb-4 font-bold">
                                     <div className="flex flex-col font-bold">
                                         <span id="selectedDateLabel" className="text-blue-600 text-sm font-extrabold mb-1 font-bold">{selectedDateStr}</span>
@@ -781,62 +915,46 @@
                             </div>
                         </div>
 
-                        <div className="flex-shrink-0 w-full lg:w-[380px]">
-                            <div className="bg-slate-900 rounded-3xl shadow-xl p-6 text-white min-h-[600px] border border-slate-800 font-bold">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-sm font-extrabold flex items-center gap-2"><Icons.Receipt className="text-emerald-400 w-4 h-4"/> 최종 배차 결과</h2>
-                                    <span className="text-xs text-slate-400 font-normal">{selectedDateStr}</span>
+                        {/* 기존 우측 패널(최종 배차 결과) 삭제됨 */}
+                    </div>
+
+                    {modal.type === 'vehicles' && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl">
+                                <div className="p-4 border-b font-bold flex justify-between">
+                                    <h3>보유 차량 관리</h3>
+                                    <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
                                 </div>
-                                <div className="space-y-4">
-                                    {getDispatchResult().map((item, idx) => {
-                                        const t = calculateWorkHours(item.info.startTime, item.info.endTime, currentDayData.isHoliday, item.info.isHolidayWork);
-                                        const pay = calculatePay(item.info);
-                                        return (
-                                            <div key={idx} className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700 shadow-lg">
-                                                <div className="flex justify-between items-start mb-3">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-xs text-blue-400 font-black">{item.vehicle.type[0]}</div>
-                                                        <div>
-                                                            <div className="text-sm font-black">{item.vehicle.name} <span className="text-[10px] text-slate-500 font-normal">{item.vehicle.plate}</span></div>
-                                                            <div className="text-[10px] text-emerald-400">{item.info.destination || '미입력'}</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-300">{item.info.duration===1?'당일':(item.info.duration-1)+'박'}</span>
-                                                        <div className="text-[9px] text-slate-500 mt-1">{item.info.startTime}~{item.info.endTime}</div>
-                                                        <div className="mt-1"><span className="text-[9px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-800/50">{item.info.operationType || '공공예약'}</span></div>
-                                                    </div>
+                                <div className="p-6">
+                                    <div className="flex gap-2 mb-3 bg-slate-50 p-2 rounded-xl">
+                                        <input type="text" id="addVName" placeholder="호차명" className="w-1/3 text-xs border rounded p-1.5 outline-none"/>
+                                        <input type="text" id="addVPlate" placeholder="번호" className="w-1/3 text-xs border rounded p-1.5 outline-none"/>
+                                        <select id="addVType" className="w-1/3 text-xs border rounded p-1.5 outline-none">
+                                            <option value="BUS">버스</option>
+                                            <option value="SOLATI">솔라티</option>
+                                        </select>
+                                        <button onClick={()=>{
+                                            const n=document.getElementById('addVName').value, p=document.getElementById('addVPlate').value, t=document.getElementById('addVType').value;
+                                            if(!n) return; 
+                                            addVehicle(n,p,t);
+                                            document.getElementById('addVName').value=''; document.getElementById('addVPlate').value='';
+                                        }} className="bg-slate-800 text-white w-12 rounded text-xs shrink-0">등록</button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 max-h-[400px] overflow-y-auto">
+                                        {vehiclesList.map(v => (
+                                            <div key={v.id} className="flex justify-between items-center p-3 border rounded-lg text-sm font-bold bg-white">
+                                                <div className="flex flex-col">
+                                                    <span>{v.name}</span>
+                                                    <span className="text-[10px] text-slate-400 font-normal">{v.plate}</span>
                                                 </div>
-                                                {item.info.custName && <div className="mb-3 px-2 py-1 bg-slate-700 rounded text-[10px] font-normal text-slate-300">예약: {item.info.custName} ({item.info.custPhone})</div>}
-                                                <div className="grid grid-cols-4 gap-2 py-2 border-y border-slate-700/50 mb-3 text-center text-[10px]">
-                                                    <div><div className="text-slate-500">실근무</div><div>{t.work}h</div></div>
-                                                    <div><div className="text-slate-500">{currentDayData.isHoliday || item.info.isHolidayWork ? '휴일' : '초과'}</div><div className="text-red-400">{t.extra}h</div></div>
-                                                    <div><div className="text-blue-400">인정</div><div className="text-sm text-blue-300 font-black">{t.adjusted}h</div></div>
-                                                    <div className="border-l border-slate-700"><div className="text-emerald-400">금액</div><div className="text-sm text-emerald-300 font-black">{pay.toLocaleString()}</div></div>
-                                                </div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {item.slots.map((d, sIdx) => (d ? <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className={`flex-grow py-2 rounded-lg text-[11px] font-bold border flex items-center justify-center gap-1 ${d.type==='manual' ? 'bg-orange-900/30 border-orange-500/30 text-orange-200' : 'bg-slate-700 border-slate-600 text-blue-200'}`}>{d.nm} <span className="text-[9px] opacity-70 ml-1">({d.rank}순위)</span> {d.type==='manual' && <div className="w-1.5 h-1.5 bg-orange-400 rounded-full"></div>}</button> : <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className="flex-grow py-2 bg-red-900/20 border border-red-500/30 rounded-lg text-[11px] text-red-400 animate-pulse">공석</button>))}
-                                                </div>
+                                                <button onClick={() => removeVehicle(v.id)} className="text-red-300 hover:text-red-500"><Icons.Trash2 className="w-4 h-4"/></button>
                                             </div>
-                                        );
-                                    })}
-                                    {getDispatchResult().length === 0 && <div className="text-center py-20 text-slate-600 text-xs italic">예약 내역이 없습니다.</div>}
-                                    
-                                    {/* 휴무 인원 표시 영역 추가 */}
-                                    <div className="mt-4 pt-4 border-t border-slate-700">
-                                        <div className="flex items-center gap-2 mb-2 text-slate-400 text-xs font-bold">
-                                            <Icons.UserX className="w-3 h-3"/> <span>금일 휴무 ({currentOffDrivers.length})</span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {currentOffDrivers.length > 0 ? currentOffDrivers.map((nm, i) => (
-                                                <span key={i} className="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-400 text-xs">{nm}</span>
-                                            )) : <span className="text-slate-600 text-xs">휴무 인원 없음</span>}
-                                        </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     {modal.type === 'replace' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -860,82 +978,235 @@
                         </div>
                     )}
 
-                    {modal.type === 'stats' && (
+                    {modal.type === 'data' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-4xl rounded-2xl overflow-hidden shadow-2xl h-[80vh] flex flex-col">
-                                <div className="p-5 border-b font-bold flex justify-between bg-slate-50">
-                                    <h3>{viewDate.getFullYear()}년 {viewDate.getMonth()+1}월 정산</h3>
+                            <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl">
+                                <div className="p-4 border-b font-bold flex justify-between">
+                                    <h3>데이터 관리</h3>
                                     <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
                                 </div>
-                                <div className="flex-grow overflow-auto p-6">
-                                    <table className="w-full text-left font-bold text-sm">
-                                        <thead>
-                                            <tr className="text-slate-400 border-b text-xs uppercase"><th className="pb-2 pl-2">이름</th><th className="text-center pb-2">당일</th><th className="text-center pb-2">1박</th><th className="text-center pb-2">2박</th><th className="text-right pb-2">인정(h)</th><th className="text-right pb-2">수당(원)</th></tr>
-                                        </thead>
-                                        <tbody>
-                                            {(() => {
-                                                const year = viewDate.getFullYear(), month = viewDate.getMonth();
-                                                const stats = driverNames.map(nm => ({ nm, c1:0, c2:0, c3:0, tA:0, tM:0, typeCounts: {} }));
-                                                const lastD = new Date(year, month + 1, 0).getDate();
-                                                for (let d = 1; d <= lastD; d++) {
-                                                    const dS = `${year}-${String(month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                                                    const data = scheduleData[dS];
-                                                    if (!data || !Object.keys(data.reserved).length) continue;
-                                                    let pool = driverNames.map((nm, i) => ({ nm, id: i, active: data.driverStatus[i], rank: data.driverRanks[i] })).filter(d => d.active).sort((a, b) => a.rank - b.rank);
-                                                    const manualAssigned = new Set();
-                                                    Object.values(data.overrides).forEach(id => manualAssigned.add(id));
-                                                    pool = pool.filter(p => !manualAssigned.has(p.id));
-                                                    const sortedV = vehiclesList.filter(v => data.reserved[v.id]).sort((a, b) => { const iA = data.reserved[a.id], iB = data.reserved[b.id]; if (iA.duration !== iB.duration) return iA.duration - iB.duration; if ((iA.km || 0) !== (iB.km || 0)) return (iA.km || 0) - (iB.km || 0); return a.name.localeCompare(b.name); });
-                                                    sortedV.forEach(v => {
-                                                        const info = data.reserved[v.id];
-                                                        if (info.isUnavailable) return; 
-                                                        const t = calculateWorkHours(info.startTime, info.endTime, data.isHoliday, info.isHolidayWork);
-                                                        if (!t.valid) return;
-                                                        const pay = calculatePay(info);
-                                                        for (let i = 0; i < v.capacity; i++) {
-                                                            const k = `${v.id}_${i}`;
-                                                            let dId = -1;
-                                                            if (data.overrides[k] !== undefined) { dId = data.overrides[k]; } else if (pool.length > 0) { dId = pool.shift().id; }
-                                                            if (dId !== -1 && stats[dId]) {
-                                                                if (info.duration === 1) stats[dId].c1++; else if (info.duration === 2) stats[dId].c2++; else stats[dId].c3++;
-                                                                stats[dId].tA += t.adjusted;
-                                                                stats[dId].tM += pay;
-                                                                const opType = info.operationType || '공공예약';
-                                                                stats[dId].typeCounts[opType] = (stats[dId].typeCounts[opType] || 0) + 1;
-                                                            }
-                                                        }
-                                                    });
-                                                }
-                                                return stats.map((s, i) => (
-                                                    <React.Fragment key={i}>
-                                                        <tr className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onClick={() => setExpandedStatsDriver(expandedStatsDriver === i ? null : i)}>
-                                                            <td className="py-3 pl-2 font-extrabold flex items-center gap-2">{s.nm} {expandedStatsDriver === i ? <Icons.ChevronUpCircle className="w-3 h-3 text-slate-400"/> : <Icons.ChevronDownCircle className="w-3 h-3 text-slate-400"/>}</td>
-                                                            <td className="text-center text-slate-400">{s.c1}</td>
-                                                            <td className="text-center text-blue-400">{s.c2}</td>
-                                                            <td className="text-center text-orange-400">{s.c3}</td>
-                                                            <td className="text-right text-blue-600 font-black">{s.tA.toFixed(1)}</td>
-                                                            <td className="text-right text-emerald-600 font-black">{s.tM.toLocaleString()}</td>
-                                                        </tr>
-                                                        {expandedStatsDriver === i && (
-                                                            <tr className="bg-slate-50 border-b border-slate-100">
-                                                                <td colSpan="6" className="p-3">
-                                                                    <div className="flex flex-wrap gap-2 text-xs">
-                                                                        {Object.entries(s.typeCounts).map(([type, count]) => (
-                                                                            <div key={type} className="px-2 py-1 bg-white border rounded-md shadow-sm">
-                                                                                <span className="text-slate-500 mr-1">{type}</span>
-                                                                                <span className="font-bold text-slate-800">{count}회</span>
-                                                                            </div>
-                                                                        ))}
-                                                                        {Object.keys(s.typeCounts).length === 0 && <span className="text-slate-400">운행 기록 없음</span>}
-                                                                    </div>
+                                <div className="p-6 space-y-4">
+                                    <button onClick={handleBackup} className="w-full py-3 bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 transition">
+                                        <Icons.Download className="w-5 h-5"/> 백업 데이터 다운로드
+                                    </button>
+                                    <div className="relative">
+                                        <input type="file" accept=".json" onChange={handleRestore} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
+                                        <button className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition border border-slate-200">
+                                            <Icons.Upload className="w-5 h-5"/> 백업 파일로 복원
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-slate-400 text-center mt-2">
+                                        * 백업 파일(.json)을 선택하면 현재 데이터가 덮어씌워집니다.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {modal.type === 'stats' && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-5xl rounded-2xl overflow-hidden shadow-2xl h-[85vh] flex flex-col">
+                                <div className="p-5 border-b font-bold flex flex-col gap-3 bg-slate-50">
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex items-center gap-4">
+                                            {/* Year Control */}
+                                            <div className="flex items-center bg-white rounded-lg shadow-sm border border-slate-200 px-2 py-1">
+                                                <button onClick={() => setStatsYear(y => y - 1)} className="p-1 hover:text-blue-600 transition"><Icons.ChevronLeft className="w-4 h-4"/></button>
+                                                <span className="mx-2 text-lg font-black text-slate-700 min-w-[60px] text-center">{statsYear}년</span>
+                                                <button onClick={() => setStatsYear(y => y + 1)} className="p-1 hover:text-blue-600 transition"><Icons.ChevronRight className="w-4 h-4"/></button>
+                                            </div>
+
+                                            {/* Month Control (Only in Monthly Mode) */}
+                                            {statsMode === 'monthly' && (
+                                                <div className="flex items-center bg-white rounded-lg shadow-sm border border-slate-200 px-2 py-1">
+                                                    <button onClick={() => setStatsMonth(m => m === 0 ? 11 : m - 1)} className="p-1 hover:text-blue-600 transition"><Icons.ChevronLeft className="w-4 h-4"/></button>
+                                                    <span className="mx-2 text-lg font-black text-slate-700 min-w-[40px] text-center">{statsMonth + 1}월</span>
+                                                    <button onClick={() => setStatsMonth(m => m === 11 ? 0 : m + 1)} className="p-1 hover:text-blue-600 transition"><Icons.ChevronRight className="w-4 h-4"/></button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button onClick={() => setModal({ type: null })} className="text-slate-400 hover:text-slate-600"><Icons.X className="w-6 h-6"/></button>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex gap-2">
+                                            <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200">
+                                                <button 
+                                                    onClick={() => setStatsMode('monthly')} 
+                                                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition ${statsMode === 'monthly' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                                                >
+                                                    월별 상세
+                                                </button>
+                                                <button 
+                                                    onClick={() => setStatsMode('yearly')} 
+                                                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition ${statsMode === 'yearly' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                                                >
+                                                    연간 집계
+                                                </button>
+                                            </div>
+                                            
+                                            {/* 연간 집계 모드일 때 금액/시간 보기 토글 */}
+                                            {statsMode === 'yearly' && (
+                                                <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200">
+                                                    <button 
+                                                        onClick={() => setYearlyViewType('money')}
+                                                        className={`px-3 py-1.5 text-xs font-bold rounded-md transition flex items-center gap-1 ${yearlyViewType === 'money' ? 'bg-emerald-500 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                                                    >
+                                                        <Icons.Money className="w-3 h-3"/> 수당
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setYearlyViewType('hours')}
+                                                        className={`px-3 py-1.5 text-xs font-bold rounded-md transition flex items-center gap-1 ${yearlyViewType === 'hours' ? 'bg-orange-500 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                                                    >
+                                                        <Icons.Clock className="w-3 h-3"/> 인정시간
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <button 
+                                            onClick={() => handleDownloadExcel(statsYear, statsMonth)}
+                                            className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700 transition flex items-center gap-1 shadow-sm"
+                                        >
+                                            <Icons.FileExcel className="w-3 h-3"/> 엑셀 다운로드
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex-grow overflow-auto p-0 bg-white">
+                                    {statsMode === 'monthly' ? (
+                                        <div className="p-6">
+                                            <table className="w-full text-left font-bold text-sm stats-table">
+                                                <thead>
+                                                    <tr className="text-slate-500 border-b text-xs uppercase bg-slate-50">
+                                                        <th className="pb-2 pl-4">이름</th>
+                                                        <th className="text-center pb-2">당일</th>
+                                                        <th className="text-center pb-2">1박</th>
+                                                        <th className="text-center pb-2">2박</th>
+                                                        <th className="text-right pb-2">인정(h)</th>
+                                                        <th className="text-right pb-2">금월 수당</th>
+                                                        <th className="text-right pb-2 pr-4 bg-blue-50 text-blue-700">금년 누적</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {(() => {
+                                                        const stats = calculateMonthlyStats(statsYear, statsMonth);
+                                                        const yearlyStats = calculateYearlyStats(statsYear);
+                                                        const totalPay = stats.reduce((acc, curr) => acc + curr.tM, 0);
+                                                        const totalHours = stats.reduce((acc, curr) => acc + curr.tA, 0);
+                                                        const totalYearPay = yearlyStats.reduce((acc, curr) => acc + curr.totalMoney, 0);
+
+                                                        return (
+                                                            <>
+                                                                {stats.map((s, i) => (
+                                                                    <React.Fragment key={i}>
+                                                                        <tr className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition" onClick={() => setExpandedStatsDriver(expandedStatsDriver === i ? null : i)}>
+                                                                            <td className="py-3 pl-4 font-extrabold flex items-center gap-2">
+                                                                                {s.nm} 
+                                                                                {expandedStatsDriver === i ? <Icons.ChevronUpCircle className="w-4 h-4 text-slate-400"/> : <Icons.ChevronDownCircle className="w-4 h-4 text-slate-300"/>}
+                                                                            </td>
+                                                                            <td className="text-center text-slate-400">{s.c1}</td>
+                                                                            <td className="text-center text-blue-400">{s.c2}</td>
+                                                                            <td className="text-center text-orange-400">{s.c3}</td>
+                                                                            <td className="text-right text-blue-600 font-black">{s.tA.toFixed(1)}</td>
+                                                                            <td className="text-right text-emerald-600 font-black">{s.tM.toLocaleString()}</td>
+                                                                            <td className="text-right font-black bg-blue-50/50 text-blue-800 pr-4 border-l border-slate-100">
+                                                                                {yearlyStats[i].totalMoney.toLocaleString()}
+                                                                            </td>
+                                                                        </tr>
+                                                                        {expandedStatsDriver === i && (
+                                                                            <tr className="bg-slate-50 border-b border-slate-100">
+                                                                                <td colSpan="7" className="p-4">
+                                                                                    <div className="flex flex-wrap gap-2 text-xs">
+                                                                                        {Object.entries(s.typeCounts).map(([type, count]) => (
+                                                                                            <div key={type} className="px-3 py-1.5 bg-white border rounded-lg shadow-sm flex items-center gap-2">
+                                                                                                <span className="text-slate-500 font-medium">{type}</span>
+                                                                                                <span className="font-bold text-slate-800">{count}회</span>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                        {Object.keys(s.typeCounts).length === 0 && <span className="text-slate-400 pl-2">이달 운행 기록이 없습니다.</span>}
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        )}
+                                                                    </React.Fragment>
+                                                                ))}
+                                                                <tr className="bg-slate-100 border-t-2 border-slate-200">
+                                                                    <td colSpan="4" className="py-4 pl-4 text-right font-black text-slate-600">월 총계</td>
+                                                                    <td className="py-4 text-right font-black text-blue-600 text-sm">{totalHours.toFixed(1)}h</td>
+                                                                    <td className="py-4 text-right font-black text-emerald-600 text-lg">{totalPay.toLocaleString()}</td>
+                                                                    <td className="py-4 pr-4 text-right font-black text-blue-700 text-lg border-l border-slate-200 bg-blue-100">{totalYearPay.toLocaleString()}</td>
+                                                                </tr>
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <div className="relative">
+                                            <table className="w-full text-left font-bold text-xs stats-table">
+                                                <thead>
+                                                    <tr className="bg-slate-50 border-b text-slate-600">
+                                                        <th className="pl-4 py-3 bg-slate-50 left-0 z-20">이름</th>
+                                                        {Array.from({length: 12}).map((_, m) => (
+                                                            <th key={m} className="text-right px-2 min-w-[70px]">{m+1}월</th>
+                                                        ))}
+                                                        <th className="text-right pr-4 bg-blue-50 text-blue-700 z-10 sticky right-0">합계</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {(() => {
+                                                        const yearlyStats = calculateYearlyStats(statsYear);
+                                                        let monthlyTotals = Array(12).fill(0);
+                                                        let grandTotalMoney = 0;
+                                                        let grandTotalHours = 0;
+
+                                                        const rows = yearlyStats.map((s, i) => {
+                                                            s.months.forEach((d, m) => {
+                                                                monthlyTotals[m] += (yearlyViewType === 'money' ? d.m : d.h);
+                                                            });
+                                                            grandTotalMoney += s.totalMoney;
+                                                            grandTotalHours += s.totalHours;
+                                                            
+                                                            const rowTotal = yearlyViewType === 'money' ? s.totalMoney : s.totalHours;
+
+                                                            return (
+                                                                <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                                                                    <td className="pl-4 py-2 font-extrabold sticky left-0 bg-white z-10 border-r border-slate-100">{s.nm}</td>
+                                                                    {s.months.map((d, m) => {
+                                                                        const val = yearlyViewType === 'money' ? d.m : d.h;
+                                                                        return (
+                                                                            <td key={m} className={`text-right px-2 ${val === 0 ? 'text-slate-200' : 'text-slate-700'}`}>
+                                                                                {val > 0 ? (yearlyViewType === 'money' ? val.toLocaleString() : val.toFixed(1)) : '-'}
+                                                                            </td>
+                                                                        );
+                                                                    })}
+                                                                    <td className="text-right font-black pr-4 bg-blue-50/30 text-blue-700 sticky right-0 border-l border-slate-100">
+                                                                        {yearlyViewType === 'money' ? rowTotal.toLocaleString() : rowTotal.toFixed(1)}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        });
+
+                                                        rows.push(
+                                                            <tr key="total" className="bg-slate-100 font-black border-t-2 border-slate-200">
+                                                                <td className="pl-4 py-3 sticky left-0 bg-slate-100 z-10 border-r border-slate-200 text-slate-600">월별 합계</td>
+                                                                {monthlyTotals.map((val, m) => (
+                                                                    <td key={m} className="text-right px-2 text-slate-700">
+                                                                        {yearlyViewType === 'money' ? val.toLocaleString() : val.toFixed(1)}
+                                                                    </td>
+                                                                ))}
+                                                                <td className="text-right pr-4 bg-blue-100 text-blue-800 sticky right-0 border-l border-slate-300">
+                                                                    {yearlyViewType === 'money' ? grandTotalMoney.toLocaleString() : grandTotalHours.toFixed(1)}
                                                                 </td>
                                                             </tr>
-                                                        )}
-                                                    </React.Fragment>
-                                                ));
-                                            })()}
-                                        </tbody>
-                                    </table>
+                                                        );
+                                                        return rows;
+                                                    })()}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
