@@ -263,7 +263,8 @@
             const [yearlyViewType, setYearlyViewType] = useState('money'); // 'money' or 'hours'
 
             const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
-                return window.innerWidth >= 1024 ? window.innerWidth * 0.5 : 380;
+                // PC 화면에서 초기 65%로 설정
+                return window.innerWidth >= 1024 ? window.innerWidth * 0.65 : 380;
             });
             const isDragging = useRef(false);
             const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
@@ -620,7 +621,7 @@
             const getDispatchResult = () => calculateDispatchLogic(currentDayData, driverNames, vehiclesList);
 
             const renderCalendarContent = (isExpanded) => {
-                const cellHeight = isExpanded ? 'min-h-[220px]' : 'min-h-[80px]';
+                const cellHeight = isExpanded ? 'min-h-[300px]' : 'min-h-[112px]';
                 const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
                 const dateTextSize = isExpanded ? "text-2xl font-extrabold" : "text-xs font-bold";
                 const holidayTextSize = isExpanded ? "text-sm" : "text-[10px]";
