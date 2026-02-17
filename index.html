@@ -535,19 +535,19 @@
             const getDispatchResult = () => calculateDispatchLogic(currentDayData, driverNames, vehiclesList);
 
             const renderCalendarContent = (isExpanded) => {
-                const cellHeight = isExpanded ? 'min-h-[150px]' : 'min-h-[80px]';
+                const cellHeight = isExpanded ? 'min-h-[220px]' : 'min-h-[80px]';
                 const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
                 
                 // 확대 모드에 따른 폰트 크기 조정
-                const dateTextSize = isExpanded ? "text-lg font-extrabold" : "text-xs font-bold";
-                const holidayTextSize = isExpanded ? "text-xs" : "text-[10px]";
-                const groupTextSize = isExpanded ? "text-xs p-1" : "text-[9px] px-1 py-0.5";
-                const offTextSize = isExpanded ? "text-[10px]" : "text-[8px]";
+                const dateTextSize = isExpanded ? "text-2xl font-extrabold" : "text-xs font-bold";
+                const holidayTextSize = isExpanded ? "text-sm" : "text-[10px]";
+                const groupTextSize = isExpanded ? "text-sm p-1.5" : "text-[9px] px-1 py-0.5";
+                const offTextSize = isExpanded ? "text-xs" : "text-[8px]";
 
                 return (
                     <div className="border-t border-l border-slate-200 bg-slate-200">
                         <div className={`grid grid-cols-7 gap-px border-b border-slate-200 bg-white`}>
-                            {weekDays.map((day, idx) => (<div key={day} className={`text-center font-bold py-2 ${isExpanded ? 'text-sm' : 'text-xs'} ${idx === 0 ? "text-red-500" : idx === 6 ? "text-blue-500" : "text-slate-500"}`}>{day}</div>))}
+                            {weekDays.map((day, idx) => (<div key={day} className={`text-center font-bold py-2 ${isExpanded ? 'text-xl' : 'text-xs'} ${idx === 0 ? "text-red-500" : idx === 6 ? "text-blue-500" : "text-slate-500"}`}>{day}</div>))}
                         </div>
                         <div className={`grid grid-cols-7 gap-px bg-slate-200`}>
                             {Array.from({length: new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay()}).map((_, i) => (<div key={`empty-${i}`} className="bg-white/50"></div>))}
