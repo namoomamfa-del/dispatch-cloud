@@ -98,7 +98,8 @@
             FileExcel: ({className}) => <i className={`fa-solid fa-file-excel ${className}`} />,
             Table: ({className}) => <i className={`fa-solid fa-table ${className}`} />,
             Clock: ({className}) => <i className={`fa-regular fa-clock ${className}`} />,
-            Money: ({className}) => <i className={`fa-solid fa-won-sign ${className}`} />
+            Money: ({className}) => <i className={`fa-solid fa-won-sign ${className}`} />,
+            Palette: ({className}) => <i className={`fa-solid fa-palette ${className}`} />
         };
 
         // --- 공휴일 및 기념일 관리 (30년 자동 생성) ---
@@ -115,10 +116,13 @@
                 const day = originalDateObj.getDay(); 
                 let subDate = new Date(originalDateObj);
                 let needed = false;
-                if (["설날 연휴", "설날", "추석 연휴", "추석", "어린이날", "삼일절", "광복절", "개천절", "한글날", "성탄절", "부처님오신날"].includes(name)) {
-                    if (day === 0 || (name === "어린이날" && day === 6) || (["설날 연휴", "추석 연휴"].includes(name) && day === 0)) needed = true;
-                    if(["삼일절","광복절","개천절","한글날","성탄절","부처님오신날"].includes(name) && (day===0 || day===6)) needed = true;
+
+                if (["설날 연휴", "설날", "추석 연휴", "추석"].includes(name)) {
+                    if (day === 0) needed = true;
+                } else if (name === "어린이날" || name === "삼일절" || name === "광복절" || name === "개천절" || name === "한글날" || name === "성탄절" || name === "부처님오신날") {
+                    if (day === 0 || day === 6) needed = true;
                 }
+
                 if (needed) {
                     subDate.setDate(subDate.getDate() + 1);
                     if (day === 6) subDate.setDate(subDate.getDate() + 1); 
@@ -151,6 +155,7 @@
                         holidays[prevDate.toISOString().split('T')[0]] = `${evt.name} 연휴`;
                         holidays[dateStr] = evt.name;
                         holidays[nextDate.toISOString().split('T')[0]] = `${evt.name} 연휴`;
+
                         [prevDate, dateObj, nextDate].forEach(d => {
                             if (d.getDay() === 0) {
                                 let sub = new Date(nextDate); sub.setDate(sub.getDate() + 1);
@@ -203,10 +208,16 @@
         const calculatePay = (info) => {
             if (info.customPay) return parseInt(info.customPay) || 0;
             const type = info.operationType || '공공예약';
-            const duration = info.duration || 1;
+            const duration = info.duration;
+            
+            // 서울인 경우 (duration이 'seoul' 문자열로 넘어오는 경우도 방어)
+            if (duration === 'seoul') return 0;
+
             if (type !== '공공예약') return 0;
+            
+            // 기본 당일/1박/2박 요금 (서울 제외)
             if (duration <= 1) return 12500;
-            return 35000 * duration;
+            return 35000 * duration; // 1박=2일치(70000), 2박=3일치(105000) 등
         };
 
         const DEFAULT_DRIVERS = ["박기준", "변석현", "이명순", "김탁", "한상훈", "문인식", "황덕일", "강철규", "이상헌"];
@@ -246,14 +257,12 @@
             const [isCalendarExpanded, setIsCalendarExpanded] = useState(false); 
             const [expandedStatsDriver, setExpandedStatsDriver] = useState(null);
             
-            // 정산 모드 (monthly, yearly) 및 상태
             const [statsMode, setStatsMode] = useState('monthly');
             const [statsYear, setStatsYear] = useState(new Date().getFullYear());
             const [statsMonth, setStatsMonth] = useState(new Date().getMonth());
             const [yearlyViewType, setYearlyViewType] = useState('money'); 
 
             const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
-                // PC 화면에서 초기 65%로 설정
                 return window.innerWidth >= 1024 ? window.innerWidth * 0.65 : 380;
             });
             const isDragging = useRef(false);
@@ -359,7 +368,6 @@
                     const infoB = dayData.reserved[b.id];
                     if (a.type !== b.type) { return a.type === 'BUS' ? -1 : 1; }
                     if (infoA.duration !== infoB.duration) { return infoA.duration - infoB.duration; }
-                    // 시간 정렬 제거됨
                     if ((infoA.km || 0) !== (infoB.km || 0)) { return (infoA.km || 0) - (infoB.km || 0); }
                     if (a.type === 'BUS') {
                         const getBusRank = (name) => {
@@ -546,7 +554,10 @@
                                 if (slot && slot.id !== -1) {
                                     const dId = slot.id;
                                     if (stats[dId]) {
-                                        if (info.duration === 1) stats[dId].c1++; else if (info.duration === 2) stats[dId].c2++; else stats[dId].c3++;
+                                        if (info.duration === 1) stats[dId].c1++; 
+                                        else if (info.duration === 2) stats[dId].c2++; 
+                                        else if (info.duration === 3) stats[dId].c3++;
+                                        
                                         stats[dId].tA += t.adjusted;
                                         stats[dId].tM += pay;
                                         stats[dId].totalMoney += pay;
@@ -642,11 +653,6 @@
 
             const handleSaveDay = async (newData) => { 
                 const { _isLinked, _excludedIds, excludedIds, dispatchResult, lastDriverId, ...dataToSave } = newData; 
-                // Set을 Array로 변환하여 저장하거나 제거
-                // _excludedIds는 저장할 필요 없음 (자동 계산됨)
-                // driverRanks도 자동 계산되므로, 굳이 저장할 필요가 없을 수도 있지만
-                // 수동 개입(override) 등이 있다면 저장해야 함.
-                // 여기서는 기존 로직대로 저장하되, 읽을 때 무시하는 방향으로 구현됨.
                 await db.collection(`artifacts/${APP_ID}/public/data/calendar`).doc(selectedDateStr).set(dataToSave); 
             };
             const handleSaveMaster = async (nD, nV) => { await db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set({ driverNames: nD || driverNames, vehiclesList: nV || vehiclesList }); };
@@ -712,13 +718,13 @@
                                 const d = i + 1;
                                 const dStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                                 const isSel = dStr === selectedDateStr;
-                                const dayData = getCalculatedDayData(dStr); // Use calculated data
+                                const dayData = getCalculatedDayData(dStr);
                                 const isH = dayData.isHoliday;
                                 const holidayName = getHolidayName(dStr); 
                                 const dayOfWeek = new Date(viewDate.getFullYear(), viewDate.getMonth(), d).getDay(); 
 
                                 let vehicleGroups = {};
-                                let workingDriverIds = new Set(); // 이 날짜에 근무하는 운전자 ID 수집
+                                let workingDriverIds = new Set(); 
 
                                 // 과거 6일까지 조회하여 연박 일정 확인
                                 for (let k = 0; k < 7; k++) {
@@ -732,28 +738,31 @@
                                     const pastDayData = getCalculatedDayData(checkDateStr);
                                     
                                     (pastDayData.dispatchResult || []).forEach(item => {
-                                        // k일 전에 출발한 차량이 오늘(dStr)까지 운행하는지 확인
-                                        // k=0(당일): duration >= 1 (1 > 0 true) -> 표시
-                                        // k=1(어제): duration >= 2 (2 > 1 true) -> 표시 (1박2일차)
-                                        // k=2(그제): duration >= 3 (3 > 2 true) -> 표시 (2박3일차)
-                                        if (item.info.duration > k) {
+                                        // k일 전에 출발한 차량의 duration 확인
+                                        // k=0(당일): duration >= 1 
+                                        // k=1(어제): duration >= 2
+                                        // "서울"(-1)은 무시
+                                        const rawDuration = item.info.duration;
+                                        const duration = rawDuration === 'seoul' ? 1 : rawDuration;
+
+                                        if (duration > k) {
                                             let colorClass = "bg-slate-50 text-slate-800";
                                              if (item.info.isUnavailable) { colorClass = "bg-red-100 text-red-600 border border-red-200"; } 
-                                            else if (item.info.duration === 2) { colorClass = "bg-green-100 text-green-700"; } 
-                                            else if (item.info.duration >= 3) { colorClass = "bg-sky-100 text-sky-700"; } 
+                                            else if (duration === 2) { colorClass = "bg-green-100 text-green-700"; } 
+                                            else if (duration >= 3) { colorClass = "bg-sky-100 text-sky-700"; } 
                                             else { 
                                                 if (item.info.operationType === '공공예약') colorClass = "bg-indigo-50 text-indigo-900 font-extrabold"; 
                                                 else if (item.info.operationType === '시티투어') colorClass = "bg-blue-50 text-blue-600"; 
                                             }
                                             
-                                            // vehicleGroups에 추가 (차량 ID 기준 덮어쓰기 - 이미 있으면 무시해도 됨, 어차피 같은 차량)
+                                            // vehicleGroups에 추가 (이미 있으면 무시)
                                             if (!vehicleGroups[item.vehicle.id]) {
                                                 vehicleGroups[item.vehicle.id] = { 
                                                     name: item.vehicle.name, 
                                                     drivers: [], 
                                                     color: colorClass, 
                                                     isUnavailable: item.info.isUnavailable,
-                                                    duration: item.info.duration // 추가
+                                                    duration: duration // 계산된 duration 사용
                                                 };
                                             }
                                             
@@ -820,11 +829,6 @@
                     if (slot) workingDriverIds.add(slot.id);
                 });
             });
-            // 연박으로 인해 오늘 근무 중인 운전자까지 확인하려면 과거 데이터도 조회해야 하지만, 
-            // 현재 화면(selectedDateStr)의 표시는 getDispatchResult(당일 출발) 기준이므로 
-            // 우측 패널의 '휴무' 표시는 당일 출발 기준 휴무자에서 근무자를 뺀 목록이 됨.
-            // 정확하게 하려면 캘린더 로직처럼 과거 예약도 뒤져봐야 함.
-            // 하지만 복잡도를 줄이기 위해 일단 당일 출발 기준만 적용 (필요시 추가 개선 가능)
             const realCurrentOffDrivers = currentOffDrivers.filter((nm, i) => {
                  const originalIdx = driverNames.indexOf(nm);
                  return !workingDriverIds.has(originalIdx);
@@ -833,8 +837,9 @@
             const excludedDriversList = Array.from(currentDayData._excludedIds || []).map(id => driverNames[id]).filter(n => n);
 
             return (
-                <div className="font-sans text-slate-800 bg-slate-50 min-h-screen">
-                    {/* ... (생략: 모달 및 헤더 부분은 이전과 동일) ... */}
+                <div className="font-sans text-slate-800 bg-slate-50 min-h-screen pb-10">
+                    {/* ... (모달 및 헤더 등은 이전과 동일하게 유지) ... */}
+                    {/* 모달 렌더링 포함 */}
                     {isCalendarExpanded && (
                         <div className="fixed inset-0 z-[100] bg-white flex flex-col h-screen w-screen">
                             <div className="p-6 border-b shadow-sm bg-white flex justify-between items-center shrink-0">
@@ -898,7 +903,7 @@
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
-                                                        <span className="text-xs bg-white border border-slate-200 px-2.5 py-1 rounded-md text-slate-600 shadow-sm font-bold">{item.info.duration===1?'당일':(item.info.duration-1)+'박'}</span>
+                                                        <span className="text-xs bg-white border border-slate-200 px-2.5 py-1 rounded-md text-slate-600 shadow-sm font-bold">{item.info.duration > 1 ? (item.info.duration-1)+'박' : '당일'}</span>
                                                         <div className="text-xs text-slate-500 mt-1.5 font-medium">{item.info.startTime}~{item.info.endTime}</div>
                                                         <div className="mt-1.5"><span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100 font-bold">{item.info.operationType || '공공예약'}</span></div>
                                                     </div>
@@ -1043,10 +1048,11 @@
                                                             <div className="flex items-center gap-1"><span className="text-[10px] text-slate-400 w-6">출근</span><input type="time" value={info.startTime} onChange={(e) => updateVehicleInfo(v.id, 'startTime', e.target.value)} className="w-full text-xs border rounded-lg p-1.5 font-bold"/></div>
                                                             <div className="flex items-center gap-1"><span className="text-[10px] text-slate-400 w-6">종료</span><input type="time" value={info.endTime} onChange={(e) => updateVehicleInfo(v.id, 'endTime', e.target.value)} className="w-full text-xs border rounded-lg p-1.5 font-bold"/></div>
                                                         </div>
-                                                        <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', parseInt(e.target.value))} className="w-full text-center text-xs border rounded-lg p-2 bg-white font-bold mt-1">
+                                                        <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', e.target.value)} className="w-full text-center text-xs border rounded-lg p-2 bg-white font-bold mt-1">
                                                             <option value={1}>당일 (1.25만)</option>
                                                             <option value={2}>1박 (7.0만)</option>
                                                             <option value={3}>2박 (10.5만)</option>
+                                                            <option value="seoul">서울 (0원)</option>
                                                         </select>
                                                         <AutoSaveInput value={info.memo} onSave={(val) => updateVehicleInfo(v.id, 'memo', val)} placeholder="메모" className="w-full text-xs border rounded-lg p-2 outline-none bg-slate-50 focus:bg-white mt-2"/>
                                                     </div>
@@ -1059,7 +1065,19 @@
                         </div>
 
                     </div>
-                    {/* ... (모달 컴포넌트들: vehicles, replace, data, stats - 이전과 동일하게 유지) ... */}
+
+                    {/* Footer */}
+                    <footer className="w-full py-8 bg-slate-50 text-center border-t border-slate-200 mt-8">
+                        <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                            <div className="flex items-center gap-2 mb-1">
+                                <Icons.Palette className="w-4 h-4"/>
+                                <span className="text-xs font-bold uppercase tracking-widest">Design by Tak</span>
+                            </div>
+                            <p className="text-[10px]">© 2024 Vehicle Dispatch System. All rights reserved.</p>
+                        </div>
+                    </footer>
+
+                    {/* ... (모달 코드들 - vehicles, replace, data, stats - 유지) ... */}
                     {/* (생략된 모달 코드들은 이전 응답의 내용을 그대로 사용합니다) */}
                     {modal.type === 'vehicles' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
