@@ -228,7 +228,7 @@
             if (info.customPay) return parseInt(info.customPay) || 0;
             const type = info.operationType || '공공예약';
             const duration = info.duration;
-            if (duration === 'seoul') return 0;
+            if (duration === 'seoul' || duration === 'etc') return 0;
             if (type !== '공공예약') return 0;
             if (duration <= 1) return 12500;
             return 35000 * duration;
@@ -446,7 +446,7 @@
                         currentRanks = newRanks;
                     }
 
-                    const rawDayData = scheduleData[date];
+                    const rawDayData = scheduleData[date] || {};
                     const getPrevDate = (d, offset) => {
                         const dateObj = new Date(d);
                         dateObj.setDate(dateObj.getDate() - offset);
@@ -466,7 +466,20 @@
                          });
                     }
 
-                    const computedDayData = { ...rawDayData, driverRanks: currentRanks };
+                    // 당직 상태 병합
+                    const ondutyStatus = rawDayData.ondutyStatus && rawDayData.ondutyStatus.length === n 
+                        ? rawDayData.ondutyStatus 
+                        : Array(n).fill(false);
+                    const driverStatus = rawDayData.driverStatus && rawDayData.driverStatus.length === n 
+                        ? rawDayData.driverStatus 
+                        : Array(n).fill(true);
+
+                    const computedDayData = { 
+                        ...rawDayData, 
+                        driverRanks: currentRanks,
+                        ondutyStatus: ondutyStatus,
+                        driverStatus: driverStatus
+                    };
                     const dispatchResult = calculateDispatchLogic(computedDayData, driverNames, vehiclesList, excludedIds);
 
                     let dailyLastDriver = -1;
@@ -537,11 +550,14 @@
                         });
                 }
 
+                const rawDayData = scheduleData[dateStr] || {};
+
                 return {
-                    reserved: {},
-                    driverStatus: Array(n).fill(true),
+                    reserved: rawDayData.reserved || {},
+                    driverStatus: rawDayData.driverStatus && rawDayData.driverStatus.length === n ? rawDayData.driverStatus : Array(n).fill(true),
+                    ondutyStatus: rawDayData.ondutyStatus && rawDayData.ondutyStatus.length === n ? rawDayData.ondutyStatus : Array(n).fill(false),
                     driverRanks: currentRanks,
-                    overrides: {},
+                    overrides: rawDayData.overrides || {},
                     isHoliday: isPublicHoliday(dateStr),
                     _excludedIds: excludedIds,
                     dispatchResult: []
@@ -692,6 +708,15 @@
                 if (!n.driverStatus[idx]) { Object.keys(n.overrides).forEach(key => { if (n.overrides[key] === idx) { delete n.overrides[key]; } }); }
                 handleSaveDay(n); 
             };
+
+            const toggleOndutyStatus = (idx) => { 
+                const n = { 
+                    ...currentDayData, 
+                    ondutyStatus: currentDayData.ondutyStatus ? [...currentDayData.ondutyStatus] : Array(driverNames.length).fill(false) 
+                }; 
+                n.ondutyStatus[idx] = !n.ondutyStatus[idx]; 
+                handleSaveDay(n); 
+            };
             
             const updateDriverRank = (idx, val) => { 
                 const n = { ...currentDayData }; n.driverRanks[idx] = parseInt(val) || 0; handleSaveDay(n); 
@@ -781,34 +806,40 @@
                                                 }
                                                 
                                                 if (!item.info.isUnavailable) {
-                                                 if (vehicleGroups[item.vehicle.id].drivers.length === 0) {
-                                                     item.slots.forEach(slot => {
-                                                         if(slot) {
-                                                             vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank});
-                                                             workingDriverIds.add(slot.id); 
-                                                         }
-                                                     });
-                                                 }
+                                                     if (vehicleGroups[item.vehicle.id].drivers.length === 0) {
+                                                         item.slots.forEach(slot => {
+                                                             if(slot) {
+                                                                 vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank});
+                                                                 workingDriverIds.add(slot.id); 
+                                                             }
+                                                         });
+                                                     }
+                                                }
                                             }
-                                        }
-                                    });
-                                }
+                                        });
+                                    }
 
-                                let offDriversStr = "";
-                                if (dayData && dayData.driverStatus && driverNames.length > 0) {
-                                    const offs = driverNames.filter((_, idx) => !dayData.driverStatus[idx] && !workingDriverIds.has(idx));
-                                    if (offs.length > 0) { offDriversStr = offs.join(', '); }
-                                }
-                                
-                                return (
-                                    <div key={d} onClick={() => setSelectedDateStr(dStr)} className={`${cellHeight} p-1 transition relative cursor-pointer hover:bg-yellow-50 bg-white flex flex-col items-start justify-start gap-1 ${isSel ? 'bg-yellow-100 ring-2 ring-inset ring-yellow-300 shadow-inner' : ''} ${!isSel && isH ? 'bg-red-50/30' : ''}`}>
-                                        <div className="flex items-center justify-between w-full">
-                                            <span className={`${dateTextSize} ${!isSel && isH ? 'text-red-500' : dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-slate-700'}`}>
-                                                {d} {holidayName && <span className={`${holidayTextSize} ml-1 font-normal text-red-500 opacity-80 break-keep`}>{holidayName}</span>}
-                                            </span>
-                                        </div>
-                                        <div className="w-full space-y-1 overflow-hidden mt-1">
-                                            {Object.values(vehicleGroups).map((group, gIdx) => (
+                                    let ondutyDriversStr = "";
+                                    if (dayData && dayData.ondutyStatus && driverNames.length > 0) {
+                                        const ondutys = driverNames.filter((_, idx) => dayData.ondutyStatus[idx]);
+                                        if (ondutys.length > 0) { ondutyDriversStr = ondutys.join(', '); }
+                                    }
+
+                                    let offDriversStr = "";
+                                    if (dayData && dayData.driverStatus && driverNames.length > 0) {
+                                        const offs = driverNames.filter((_, idx) => !dayData.driverStatus[idx] && !workingDriverIds.has(idx));
+                                        if (offs.length > 0) { offDriversStr = offs.join(', '); }
+                                    }
+                                    
+                                    return (
+                                        <div key={d} onClick={() => setSelectedDateStr(dStr)} className={`${cellHeight} p-1 transition relative cursor-pointer hover:bg-yellow-50 bg-white flex flex-col items-start justify-start gap-1 ${isSel ? 'bg-yellow-100 ring-2 ring-inset ring-yellow-300 shadow-inner' : ''} ${!isSel && isH ? 'bg-red-50/30' : ''}`}>
+                                            <div className="flex items-center justify-between w-full">
+                                                <span className={`${dateTextSize} ${!isSel && isH ? 'text-red-500' : dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-slate-700'}`}>
+                                                    {d} {holidayName && <span className={`${holidayTextSize} ml-1 font-normal text-red-500 opacity-80 break-keep`}>{holidayName}</span>}
+                                                </span>
+                                            </div>
+                                            <div className="w-full space-y-1 overflow-hidden mt-1">
+                                                {Object.values(vehicleGroups).map((group, gIdx) => (
                                                     <div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color} shadow-sm`}>
                                                         {group.rawDuration === 'etc' && (
                                                             <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-purple-500 rounded">
@@ -834,6 +865,11 @@
                                                     </div>
                                                 ))}
                                             </div>
+                                            {ondutyDriversStr && (
+                                                <div className="w-full mt-0.5 pt-0.5 border-t border-dashed border-slate-200">
+                                                    <div className={`${offTextSize} text-orange-600 truncate`}><span className="text-white bg-orange-500 px-1 py-0.5 rounded font-bold mr-1">당직</span>{ondutyDriversStr}</div>
+                                                </div>
+                                            )}
                                             {offDriversStr && (
                                                 <div className="w-full mt-0.5 pt-0.5 border-t border-dashed border-slate-200">
                                                     <div className={`${offTextSize} text-slate-400 truncate`}><span className="text-red-300 font-bold mr-1">휴</span>{offDriversStr}</div>
@@ -851,6 +887,8 @@
             if (isLoading) return <div className="flex flex-col h-screen items-center justify-center"><div className="spinner"></div><p className="mt-4 font-bold text-slate-500">배차 시스템 로드 중...</p></div>;
 
             const currentOffDrivers = driverNames.filter((_, i) => !currentDayData.driverStatus[i]);
+            const currentOndutyDrivers = driverNames.filter((_, i) => currentDayData.ondutyStatus && currentDayData.ondutyStatus[i]);
+            
             const workingDriverIds = new Set();
             getDispatchResult().forEach(item => {
                 item.slots.forEach(slot => {
@@ -866,7 +904,6 @@
 
             return (
                 <div className="font-sans text-slate-800 bg-slate-50 min-h-screen pb-10">
-                    {/* ... (생략: 모달 및 헤더 등) ... */}
                     {isCalendarExpanded && (
                         <div className="fixed inset-0 z-[100] bg-white flex flex-col h-screen w-screen">
                             <div className="p-6 border-b shadow-sm bg-white flex justify-between items-center shrink-0">
@@ -960,16 +997,19 @@
                                     
                                     <div className="mt-6 pt-4 border-t border-slate-200">
                                         <div className="flex items-center gap-2 mb-3 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                                            <Icons.UserX className="w-3 h-3"/> <span>배차 제외 인원 (휴무/연박)</span>
+                                            <Icons.UserX className="w-3 h-3"/> <span>당직 / 휴무 / 연박 인원</span>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
+                                            {currentOndutyDrivers.map((nm, i) => (
+                                                <span key={`onduty-${i}`} className="px-2.5 py-1 rounded-md bg-orange-100 border border-orange-200 text-orange-700 text-xs font-bold">당직: {nm}</span>
+                                            ))}
                                             {realCurrentOffDrivers.map((nm, i) => (
                                                 <span key={`off-${i}`} className="px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold">휴무: {nm}</span>
                                             ))}
                                             {excludedDriversList.map((nm, i) => (
-                                                <span key={`excl-${i}`} className="px-2.5 py-1 rounded-md bg-orange-50 border border-orange-200 text-orange-600 text-xs font-bold">연박: {nm}</span>
+                                                <span key={`excl-${i}`} className="px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-rose-600 text-xs font-bold">연박: {nm}</span>
                                             ))}
-                                            {realCurrentOffDrivers.length === 0 && excludedDriversList.length === 0 && <span className="text-slate-400 text-xs pl-1">제외 인원 없음</span>}
+                                            {currentOndutyDrivers.length === 0 && realCurrentOffDrivers.length === 0 && excludedDriversList.length === 0 && <span className="text-slate-400 text-xs pl-1">해당 인원 없음</span>}
                                         </div>
                                     </div>
                                 </div>
@@ -989,6 +1029,7 @@
                                         <div key={i} className={`flex items-center justify-between p-2 rounded-lg border text-xs font-bold group transition ${currentDayData.driverStatus[i] ? 'bg-white border-blue-100' : 'bg-slate-50 border-slate-200'}`}>
                                             <div className="flex items-center gap-2 flex-grow">
                                                 <button onClick={() => toggleDriverStatus(i)} className={`px-2 py-1 rounded-md text-[10px] w-10 flex-shrink-0 transition-colors ${currentDayData.driverStatus[i] ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>{currentDayData.driverStatus[i] ? '출근' : '휴무'}</button>
+                                                <button onClick={() => toggleOndutyStatus(i)} className={`px-2 py-1 rounded-md text-[10px] w-10 flex-shrink-0 transition-colors ${currentDayData.ondutyStatus?.[i] ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>당직</button>
                                                 <AutoSaveInput value={nm} onSave={(val) => updateDriverName(i, val)} className={`bg-transparent outline-none w-full ${!currentDayData.driverStatus[i] ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'}`} />
                                             </div>
                                             <div className="flex items-center gap-1">
@@ -1016,11 +1057,13 @@
                                         <h2 className="text-xl font-black text-slate-800 font-bold">배차 예약 정보 입력</h2>
                                     </div>
                                 </div>
+
                                 <div className="space-y-4">
                                     {vehiclesList.map(v => {
                                         const isReserved = !!currentDayData.reserved[v.id];
                                         const info = isReserved ? currentDayData.reserved[v.id] : {};
-                                        // ... (배차 입력 폼 내용 유지) ...
+                                        const currentDispatch = getDispatchResult().find(d => d.vehicle.id === v.id);
+                                        const assignedDrivers = currentDispatch && currentDispatch.slots.filter(s => s).map(s => s.nm).join(', ');
                                         return (
                                             <div key={v.id} className={`p-4 rounded-2xl border-2 transition-all ${isReserved ? 'border-blue-500 bg-white shadow-md' : 'border-slate-100 bg-slate-50 opacity-70'} font-bold`}>
                                                 <div className="flex justify-between items-center mb-2">
@@ -1029,8 +1072,7 @@
                                                             <input type="checkbox" checked={isReserved} onChange={() => toggleVehicleReservation(v.id)} className="w-5 h-5 rounded text-blue-600"/>
                                                             <div><div className="text-sm font-black">{v.name}</div><div className="text-[10px] text-slate-400 font-mono">{v.plate}</div></div>
                                                         </label>
-                                                        {isReserved && currentDayData.dispatchResult?.find(d => d.vehicle.id === v.id)?.slots.filter(s => s).map(s => s.nm).join(', ') && 
-                                                            <div className="ml-8 mt-1 text-xs text-blue-600 font-bold flex items-center gap-1"><Icons.UserCheck className="w-3 h-3"/> {currentDayData.dispatchResult.find(d => d.vehicle.id === v.id).slots.filter(s => s).map(s => s.nm).join(', ')}</div>}
+                                                        {isReserved && assignedDrivers && <div className="ml-8 mt-1 text-xs text-blue-600 font-bold flex items-center gap-1"><Icons.UserCheck className="w-3 h-3"/> {assignedDrivers}</div>}
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         {isReserved ? (
@@ -1097,7 +1139,19 @@
                         </div>
 
                     </div>
-                    {/* ... (모달 컴포넌트들: vehicles, replace, data, stats - 이전과 동일하게 유지) ... */}
+                    
+                    {/* Footer */}
+                    <footer className="w-full py-8 bg-slate-50 text-center border-t border-slate-200 mt-8">
+                        <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                            <div className="flex items-center gap-2 mb-1">
+                                <Icons.Palette className="w-4 h-4"/>
+                                <span className="text-xs font-bold uppercase tracking-widest">Design by Tak</span>
+                            </div>
+                            <p className="text-[10px]">© 2024 Vehicle Dispatch System. All rights reserved.</p>
+                        </div>
+                    </footer>
+
+                    {/* ... (모달 코드들 - vehicles, replace, data, stats - 유지) ... */}
                     {/* (생략된 모달 코드들은 이전 응답의 내용을 그대로 사용합니다) */}
                     {modal.type === 'vehicles' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
