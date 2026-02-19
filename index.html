@@ -781,34 +781,34 @@
                                                 }
                                                 
                                                 if (!item.info.isUnavailable) {
-                                                    if (vehicleGroups[item.vehicle.id].drivers.length === 0) {
-                                                        item.slots.forEach(slot => {
-                                                            if(slot) {
-                                                                vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank});
-                                                                workingDriverIds.add(slot.id); 
-                                                            }
-                                                        });
-                                                    }
-                                                }
+                                                 if (vehicleGroups[item.vehicle.id].drivers.length === 0) {
+                                                     item.slots.forEach(slot => {
+                                                         if(slot) {
+                                                             vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank});
+                                                             workingDriverIds.add(slot.id); 
+                                                         }
+                                                     });
+                                                 }
                                             }
-                                        });
-                                    }
+                                        }
+                                    });
+                                }
 
-                                    let offDriversStr = "";
-                                    if (dayData && dayData.driverStatus && driverNames.length > 0) {
-                                        const offs = driverNames.filter((_, idx) => !dayData.driverStatus[idx] && !workingDriverIds.has(idx));
-                                        if (offs.length > 0) { offDriversStr = offs.join(', '); }
-                                    }
-                                    
-                                    return (
-                                        <div key={d} onClick={() => setSelectedDateStr(dStr)} className={`${cellHeight} p-1 transition relative cursor-pointer hover:bg-blue-50 bg-white flex flex-col items-start justify-start gap-1 ${isSel ? 'bg-blue-100 shadow-inner' : ''} ${!isSel && isH ? 'bg-red-50/30' : ''}`}>
-                                            <div className="flex items-center justify-between w-full">
-                                                <span className={`${dateTextSize} ${!isSel && isH ? 'text-red-500' : dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-slate-700'}`}>
-                                                    {d} {holidayName && <span className={`${holidayTextSize} ml-1 font-normal text-red-500 opacity-80 break-keep`}>{holidayName}</span>}
-                                                </span>
-                                            </div>
-                                            <div className="w-full space-y-1 overflow-hidden mt-1">
-                                                {Object.values(vehicleGroups).map((group, gIdx) => (
+                                let offDriversStr = "";
+                                if (dayData && dayData.driverStatus && driverNames.length > 0) {
+                                    const offs = driverNames.filter((_, idx) => !dayData.driverStatus[idx] && !workingDriverIds.has(idx));
+                                    if (offs.length > 0) { offDriversStr = offs.join(', '); }
+                                }
+                                
+                                return (
+                                    <div key={d} onClick={() => setSelectedDateStr(dStr)} className={`${cellHeight} p-1 transition relative cursor-pointer hover:bg-yellow-50 bg-white flex flex-col items-start justify-start gap-1 ${isSel ? 'bg-yellow-100 ring-2 ring-inset ring-yellow-300 shadow-inner' : ''} ${!isSel && isH ? 'bg-red-50/30' : ''}`}>
+                                        <div className="flex items-center justify-between w-full">
+                                            <span className={`${dateTextSize} ${!isSel && isH ? 'text-red-500' : dayOfWeek === 0 ? 'text-red-400' : dayOfWeek === 6 ? 'text-blue-400' : 'text-slate-700'}`}>
+                                                {d} {holidayName && <span className={`${holidayTextSize} ml-1 font-normal text-red-500 opacity-80 break-keep`}>{holidayName}</span>}
+                                            </span>
+                                        </div>
+                                        <div className="w-full space-y-1 overflow-hidden mt-1">
+                                            {Object.values(vehicleGroups).map((group, gIdx) => (
                                                     <div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color} shadow-sm`}>
                                                         {group.rawDuration === 'etc' && (
                                                             <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-purple-500 rounded">
