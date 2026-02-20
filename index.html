@@ -966,6 +966,11 @@
                                                                 {group.duration - 1}박
                                                             </span>
                                                         )}
+                                                        {group.operationType === '공공예약' && !group.isCancelled && (
+                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-indigo-500 rounded">
+                                                                공공
+                                                            </span>
+                                                        )}
                                                         {group.operationType === '성묘지원' && !group.isCancelled && (
                                                             <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-blue-500 rounded">
                                                                 성묘
