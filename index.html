@@ -405,6 +405,7 @@
                 sortedV.forEach(v => {
                     const info = dayData.reserved[v.id];
                     const slots = [];
+                    // 취소된 예약도 운전자를 배정하여 순번을 소모함 (미운행 처리)
                     if (!info.isUnavailable) {
                         for(let i=0; i<v.capacity; i++) {
                             const key = `${v.id}_${i}`;
@@ -457,12 +458,12 @@
                     const excludedIds = new Set();
                     if (processedSchedule[d1]) {
                          processedSchedule[d1].dispatchResult.forEach(r => {
-                             if (r.info.duration >= 2) r.slots.forEach(s => s && excludedIds.add(s.id));
+                             if (r.info.duration >= 2 && !r.info.isCancelled) r.slots.forEach(s => s && excludedIds.add(s.id));
                          });
                     }
                     if (processedSchedule[d2]) {
                          processedSchedule[d2].dispatchResult.forEach(r => {
-                             if (r.info.duration >= 3) r.slots.forEach(s => s && excludedIds.add(s.id));
+                             if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && excludedIds.add(s.id));
                          });
                     }
 
@@ -541,12 +542,12 @@
                 const excludedIds = new Set();
                 if (allScheduleWithRanks[d1]) {
                         allScheduleWithRanks[d1].dispatchResult.forEach(r => {
-                            if (r.info.duration >= 2) r.slots.forEach(s => s && excludedIds.add(s.id));
+                            if (r.info.duration >= 2 && !r.info.isCancelled) r.slots.forEach(s => s && excludedIds.add(s.id));
                         });
                 }
                 if (allScheduleWithRanks[d2]) {
                         allScheduleWithRanks[d2].dispatchResult.forEach(r => {
-                            if (r.info.duration >= 3) r.slots.forEach(s => s && excludedIds.add(s.id));
+                            if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && excludedIds.add(s.id));
                         });
                 }
 
@@ -579,7 +580,7 @@
                         const dispatch = dayData.dispatchResult || [];
                         dispatch.forEach(item => {
                             const info = item.info;
-                            if (info.isUnavailable) return;
+                            if (info.isUnavailable || info.isCancelled) return;
                             const t = calculateWorkHours(info.startTime, info.endTime, dayData.isHoliday, info.isHolidayWork);
                             if (!t.valid) return;
                             const pay = calculatePay(info);
@@ -611,30 +612,91 @@
                     const stats = calculateStatsForRange(statsYear, statsMonth, statsYear, statsMonth);
                     const yearlyStats = calculateStatsForRange(statsYear, 0, statsYear, 11);
                     const excelData = stats.map((s, idx) => {
-                        const details = Object.entries(s.typeCounts).map(([type, count]) => `${type} ${count}회`).join(', ');
-                        return { '이름': s.nm, '당일(회)': s.c1, '1박(회)': s.c2, '2박(회)': s.c3, '인정 시간(h)': s.tA.toFixed(1), '금월 수당(원)': s.tM, '금년 누적(원)': yearlyStats[idx].totalMoney, '상세 내역': details || '운행 없음' };
+                        return { 
+                            '이름': s.nm, 
+                            '당일(회)': s.c1, 
+                            '1박(회)': s.c2, 
+                            '2박(회)': s.c3, 
+                            '공공예약(회)': s.typeCounts['공공예약'] || 0,
+                            '시티투어(회)': s.typeCounts['시티투어'] || 0,
+                            '성묘지원(회)': s.typeCounts['성묘지원'] || 0,
+                            '나들이(회)': s.typeCounts['나들이'] || 0,
+                            '기타(회)': s.typeCounts['기타'] || 0,
+                            '인정 시간(h)': s.tA.toFixed(1), 
+                            '금월 수당(원)': s.tM, 
+                            '금년 예상합계(원)': yearlyStats[idx].totalMoney
+                        };
                     });
+                    
                     const totalMonth = stats.reduce((sum, s) => sum + s.tM, 0);
                     const totalMonthHours = stats.reduce((sum, s) => sum + s.tA, 0);
                     const totalYear = yearlyStats.reduce((sum, s) => sum + s.totalMoney, 0);
-                    excelData.push({ '이름': '총계', '인정 시간(h)': totalMonthHours.toFixed(1), '금월 수당(원)': totalMonth, '금년 누적(원)': totalYear });
+                    const totalC1 = stats.reduce((sum, s) => sum + s.c1, 0);
+                    const totalC2 = stats.reduce((sum, s) => sum + s.c2, 0);
+                    const totalC3 = stats.reduce((sum, s) => sum + s.c3, 0);
+                    const totalPub = stats.reduce((sum, s) => sum + (s.typeCounts['공공예약'] || 0), 0);
+                    const totalCity = stats.reduce((sum, s) => sum + (s.typeCounts['시티투어'] || 0), 0);
+                    const totalGrave = stats.reduce((sum, s) => sum + (s.typeCounts['성묘지원'] || 0), 0);
+                    const totalPicnic = stats.reduce((sum, s) => sum + (s.typeCounts['나들이'] || 0), 0);
+                    const totalEtc = stats.reduce((sum, s) => sum + (s.typeCounts['기타'] || 0), 0);
+
+                    excelData.push({ 
+                        '이름': '총계', 
+                        '당일(회)': totalC1, 
+                        '1박(회)': totalC2, 
+                        '2박(회)': totalC3, 
+                        '공공예약(회)': totalPub,
+                        '시티투어(회)': totalCity,
+                        '성묘지원(회)': totalGrave,
+                        '나들이(회)': totalPicnic,
+                        '기타(회)': totalEtc,
+                        '인정 시간(h)': totalMonthHours.toFixed(1), 
+                        '금월 수당(원)': totalMonth, 
+                        '금년 예상합계(원)': totalYear 
+                    });
+                    
                     const wb = XLSX.utils.book_new();
                     const ws = XLSX.utils.json_to_sheet(excelData);
                     XLSX.utils.book_append_sheet(wb, ws, `${statsYear}년_${statsMonth+1}월_정산`);
                     XLSX.writeFile(wb, `배차정산_${statsYear}년_${statsMonth+1}월.xlsx`);
                 } else {
-                    const stats = driverNames.map(nm => ({ nm, months: Array.from({length: 12}, () => ({m: 0, h: 0})), totalMoney: 0, totalHours: 0 }));
+                    const stats = driverNames.map(nm => ({ nm, months: Array(12).fill({m:0, h:0}), totalMoney: 0, totalHours: 0, c1:0, c2:0, c3:0, typeCounts:{} }));
                     for(let m=0; m<12; m++) {
-                         const mStats = calculateStatsForRange(statsYear, m, statsYear, m);
-                         mStats.forEach((d, idx) => {
-                             stats[idx].months[m].m = d.tM;
-                             stats[idx].months[m].h = d.tA;
-                             stats[idx].totalMoney += d.tM;
-                             stats[idx].totalHours += d.tA;
-                         });
+                        const mStats = calculateStatsForRange(statsYear, m, statsYear, m);
+                        mStats.forEach((d, idx) => {
+                            stats[idx].months[m] = { m: d.tM, h: d.tA };
+                            stats[idx].totalMoney += d.tM;
+                            stats[idx].totalHours += d.tA;
+                            stats[idx].c1 += d.c1;
+                            stats[idx].c2 += d.c2;
+                            stats[idx].c3 += d.c3;
+                            Object.entries(d.typeCounts).forEach(([k, v]) => {
+                                stats[idx].typeCounts[k] = (stats[idx].typeCounts[k] || 0) + v;
+                            });
+                        });
                     }
+
+                    let totalC1=0, totalC2=0, totalC3=0, totalPub=0, totalCity=0, totalPicnic=0, totalGrave=0, totalEtc=0;
+                    
                     const excelData = stats.map(s => {
-                        const row = { '이름': s.nm };
+                        totalC1 += s.c1; totalC2 += s.c2; totalC3 += s.c3;
+                        totalPub += s.typeCounts['공공예약'] || 0;
+                        totalCity += s.typeCounts['시티투어'] || 0;
+                        totalPicnic += s.typeCounts['나들이'] || 0;
+                        totalGrave += s.typeCounts['성묘지원'] || 0;
+                        totalEtc += s.typeCounts['기타'] || 0;
+
+                        const row = { 
+                            '이름': s.nm,
+                            '당일(회)': s.c1,
+                            '1박(회)': s.c2,
+                            '2박(회)': s.c3,
+                            '공공예약(회)': s.typeCounts['공공예약'] || 0,
+                            '시티투어(회)': s.typeCounts['시티투어'] || 0,
+                            '나들이(회)': s.typeCounts['나들이'] || 0,
+                            '성묘지원(회)': s.typeCounts['성묘지원'] || 0,
+                            '기타(회)': s.typeCounts['기타'] || 0
+                        };
                         if (yearlyViewType === 'money') {
                             s.months.forEach((d, idx) => { row[`${idx+1}월`] = d.m; });
                             row['총 인정시간(h)'] = s.totalHours.toFixed(1); row['총 수당(원)'] = s.totalMoney;
@@ -644,7 +706,19 @@
                         }
                         return row;
                     });
-                    const totalRow = { '이름': '월별 합계' };
+
+                    const totalRow = { 
+                        '이름': '연간 합계',
+                        '당일(회)': totalC1,
+                        '1박(회)': totalC2,
+                        '2박(회)': totalC3,
+                        '공공예약(회)': totalPub,
+                        '시티투어(회)': totalCity,
+                        '나들이(회)': totalPicnic,
+                        '성묘지원(회)': totalGrave,
+                        '기타(회)': totalEtc
+                    };
+                    
                     let grandTotalMoney = 0; let grandTotalHours = 0;
                     for (let m = 0; m < 12; m++) {
                         const mTotalMoney = stats.reduce((sum, s) => sum + s.months[m].m, 0);
@@ -654,6 +728,7 @@
                     }
                     totalRow['총 인정시간(h)'] = grandTotalHours.toFixed(1); totalRow['총 수당(원)'] = grandTotalMoney;
                     excelData.push(totalRow);
+
                     const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(excelData);
                     XLSX.utils.book_append_sheet(wb, ws, `${statsYear}년_연간정산`);
                     XLSX.writeFile(wb, `연간배차정산_${statsYear}년_${yearlyViewType === 'money' ? '수당' : '인정시간'}.xlsx`);
@@ -671,12 +746,12 @@
                 const d2 = getPrevDate(dateStr, 2);
                 if (allScheduleWithRanks[d1]) {
                         allScheduleWithRanks[d1].dispatchResult.forEach(r => {
-                            if (r.info.duration >= 2) r.slots.forEach(s => s && ids.add(s.id));
+                            if (r.info.duration >= 2 && !r.info.isCancelled) r.slots.forEach(s => s && ids.add(s.id));
                         });
                 }
                 if (allScheduleWithRanks[d2]) {
                         allScheduleWithRanks[d2].dispatchResult.forEach(r => {
-                            if (r.info.duration >= 3) r.slots.forEach(s => s && ids.add(s.id));
+                            if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && ids.add(s.id));
                         });
                 }
                 return ids;
@@ -729,7 +804,7 @@
                     Object.keys(nO).forEach(k => { if (k.startsWith(vId)) delete nO[k]; });
                     n.overrides = nO;
                 } else {
-                    n.reserved[vId] = { km: 0, duration: 1, destination: '', startTime: '09:00', endTime: '18:00', custName: '', custPhone: '', memo: '', operationType: '공공예약', isHolidayWork: false, customPay: 0 };
+                    n.reserved[vId] = { km: 0, duration: 1, destination: '', startTime: '09:00', endTime: '18:00', custName: '', custPhone: '', memo: '', operationType: '공공예약', isHolidayWork: false, customPay: 0, isCancelled: false };
                 }
                 handleSaveDay(n);
             };
@@ -785,10 +860,16 @@
 
                                             if (duration > k) {
                                                 let colorClass = "bg-slate-50 text-slate-800";
-                                                if (item.info.isUnavailable) { colorClass = "bg-red-100 text-red-600 border border-red-200"; } 
-                                                else if (duration === 2) { colorClass = "bg-green-100 text-green-800"; } 
-                                                else if (duration >= 3) { colorClass = "bg-sky-100 text-sky-800"; } 
-                                                else { 
+                                                
+                                                if (item.info.isUnavailable) { 
+                                                    colorClass = "bg-red-100 text-red-600 border border-red-200"; 
+                                                } else if (item.info.isCancelled) { 
+                                                    colorClass = "bg-gray-200 text-gray-500 border border-gray-300 line-through opacity-70"; 
+                                                } else if (duration === 2) { 
+                                                    colorClass = "bg-green-100 text-green-800"; 
+                                                } else if (duration >= 3) { 
+                                                    colorClass = "bg-sky-100 text-sky-800"; 
+                                                } else { 
                                                     if (item.info.operationType === '공공예약') colorClass = "bg-indigo-100 text-indigo-900 font-extrabold border border-indigo-200"; 
                                                     else if (item.info.operationType === '시티투어') colorClass = "bg-blue-50 text-blue-700 font-bold border border-blue-100"; 
                                                 }
@@ -799,6 +880,7 @@
                                                         drivers: [], 
                                                         color: colorClass, 
                                                         isUnavailable: item.info.isUnavailable,
+                                                        isCancelled: item.info.isCancelled,
                                                         duration: duration,
                                                         rawDuration: rawDuration,
                                                         operationType: item.info.operationType 
@@ -810,7 +892,9 @@
                                                          item.slots.forEach(slot => {
                                                              if(slot) {
                                                                  vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank});
-                                                                 workingDriverIds.add(slot.id); 
+                                                                 if (!item.info.isCancelled) {
+                                                                     workingDriverIds.add(slot.id); 
+                                                                 }
                                                              }
                                                          });
                                                      }
@@ -841,27 +925,32 @@
                                             <div className="w-full space-y-1 overflow-hidden mt-1">
                                                 {Object.values(vehicleGroups).map((group, gIdx) => (
                                                     <div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color} shadow-sm`}>
-                                                        {group.rawDuration === 'etc' && (
+                                                        {group.isCancelled && (
+                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-gray-500 rounded">
+                                                                취소
+                                                            </span>
+                                                        )}
+                                                        {group.rawDuration === 'etc' && !group.isCancelled && (
                                                             <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-purple-500 rounded">
                                                                 기타
                                                             </span>
                                                         )}
-                                                        {group.duration > 1 && (
+                                                        {group.duration > 1 && !group.isCancelled && (
                                                             <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-red-500 rounded">
                                                                 {group.duration - 1}박
                                                             </span>
                                                         )}
-                                                        {group.operationType === '성묘지원' && (
+                                                        {group.operationType === '성묘지원' && !group.isCancelled && (
                                                             <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-blue-500 rounded">
                                                                 성묘
                                                             </span>
                                                         )}
-                                                        {group.operationType === '시티투어' && (
+                                                        {group.operationType === '시티투어' && !group.isCancelled && (
                                                             <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-blue-500 rounded">
                                                                 시티
                                                             </span>
                                                         )}
-                                                        {group.isUnavailable ? `⛔ ${group.name}` : `${group.name}: ${group.drivers.map(d => `${d.nm}(${d.rank})`).join(', ')}`}
+                                                        {group.isUnavailable ? `⛔ ${group.name}` : (group.isCancelled ? `${group.name} (취소됨)` : `${group.name}: ${group.drivers.map(d => `${d.nm}(${d.rank})`).join(', ')}`)}
                                                     </div>
                                                 ))}
                                             </div>
@@ -884,16 +973,18 @@
                 );
             };
 
-            if (isLoading) return <div className="flex flex-col h-screen items-center justify-center"><div className="spinner"></div><p className="mt-4 font-bold text-slate-500">배차 시스템 로드 중...</p></div>;
+            if (isLoading) return <div className="flex flex-col h-screen items-center justify-center"><div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div><p className="mt-4 font-bold text-slate-500">배차 시스템 로드 중...</p></div>;
 
             const currentOffDrivers = driverNames.filter((_, i) => !currentDayData.driverStatus[i]);
             const currentOndutyDrivers = driverNames.filter((_, i) => currentDayData.ondutyStatus && currentDayData.ondutyStatus[i]);
             
             const workingDriverIds = new Set();
             getDispatchResult().forEach(item => {
-                item.slots.forEach(slot => {
-                    if (slot) workingDriverIds.add(slot.id);
-                });
+                if(!item.info.isCancelled) {
+                    item.slots.forEach(slot => {
+                        if (slot) workingDriverIds.add(slot.id);
+                    });
+                }
             });
             const realCurrentOffDrivers = currentOffDrivers.filter((nm, i) => {
                  const originalIdx = driverNames.indexOf(nm);
@@ -904,6 +995,7 @@
 
             return (
                 <div className="font-sans text-slate-800 bg-slate-50 min-h-screen pb-10">
+                    {/* ... (생략: 모달 및 헤더 등) ... */}
                     {isCalendarExpanded && (
                         <div className="fixed inset-0 z-[100] bg-white flex flex-col h-screen w-screen">
                             <div className="p-6 border-b shadow-sm bg-white flex justify-between items-center shrink-0">
@@ -946,7 +1038,7 @@
                                 {renderCalendarContent(false)}
                             </div>
                             
-                            {/* 최종 배차 결과 */}
+                            {/* 최종 배차 결과 복원 */}
                             <div className="bg-white rounded-3xl shadow-sm p-6 text-slate-900 min-h-[400px] border border-slate-200 font-bold">
                                 <div className="flex justify-between items-center mb-6">
                                     <h2 className="text-lg font-extrabold flex items-center gap-2 text-slate-800"><Icons.Receipt className="text-emerald-600 w-5 h-5"/> 최종 배차 결과</h2>
@@ -969,6 +1061,7 @@
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
+                                                        {item.info.isCancelled && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold mr-1">취소됨</span>}
                                                         <span className="text-xs bg-white border border-slate-200 px-2.5 py-1 rounded-md text-slate-600 shadow-sm font-bold">
                                                             {item.info.duration === 'seoul' ? '서울' : (item.info.duration === 'etc' ? '기타' : (item.info.duration > 1 ? (item.info.duration-1)+'박' : '당일'))}
                                                         </span>
@@ -978,18 +1071,21 @@
                                                 </div>
                                                 {item.info.custName && <div className="mb-4 px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold text-slate-700 shadow-sm flex items-center gap-2"><Icons.UserCheck className="w-3 h-3 text-slate-400"/> 예약: {item.info.custName} ({item.info.custPhone})</div>}
                                                 <div className="grid grid-cols-4 gap-2 py-3 border-y border-slate-200 mb-4 text-center text-xs">
-                                                    <div><div className="text-slate-400 mb-1">실근무</div><div className="font-extrabold text-slate-700 text-sm">{t.work}h</div></div>
-                                                    <div><div className="text-slate-400 mb-1">{currentDayData.isHoliday || item.info.isHolidayWork ? '휴일' : '초과'}</div><div className="text-red-500 font-extrabold text-sm">{t.extra}h</div></div>
-                                                    <div><div className="text-blue-500 mb-1">인정</div><div className="text-base text-blue-700 font-black">{t.adjusted}h</div></div>
-                                                    <div className="border-l border-slate-200 pl-2"><div className="text-emerald-500 mb-1">금액</div><div className="text-base text-emerald-700 font-black">{pay.toLocaleString()}</div></div>
+                                                    <div><div className="text-slate-400 mb-1">실근무</div><div className="font-extrabold text-slate-700 text-sm">{item.info.isCancelled ? 0 : t.work}h</div></div>
+                                                    <div><div className="text-slate-400 mb-1">{currentDayData.isHoliday || item.info.isHolidayWork ? '휴일' : '초과'}</div><div className="text-red-500 font-extrabold text-sm">{item.info.isCancelled ? 0 : t.extra}h</div></div>
+                                                    <div><div className="text-blue-500 mb-1">인정</div><div className="text-base text-blue-700 font-black">{item.info.isCancelled ? 0 : t.adjusted}h</div></div>
+                                                    <div className="border-l border-slate-200 pl-2"><div className="text-emerald-500 mb-1">금액</div><div className="text-base text-emerald-700 font-black">{item.info.isCancelled ? 0 : pay.toLocaleString()}</div></div>
                                                 </div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {item.slots.map((d, sIdx) => (d ? 
-                                                        <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className={`flex-grow py-2.5 rounded-xl text-xs font-bold border flex items-center justify-center gap-1 shadow-sm transition-all ${d.type==='manual' ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'}`}>
-                                                            {d.nm} <span className="text-[10px] opacity-60 ml-1 font-normal">({d.rank}순위)</span> {d.type==='manual' && <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}
-                                                        </button> : 
-                                                        <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className="flex-grow py-2.5 bg-red-50 border border-red-100 rounded-xl text-xs text-red-500 font-bold animate-pulse hover:bg-red-100">공석 배정하기</button>))}
-                                                </div>
+                                                
+                                                {!item.info.isCancelled && (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {item.slots.map((d, sIdx) => (d ? 
+                                                            <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className={`flex-grow py-2.5 rounded-xl text-xs font-bold border flex items-center justify-center gap-1 shadow-sm transition-all ${d.type==='manual' ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'}`}>
+                                                                {d.nm} <span className="text-[10px] opacity-60 ml-1 font-normal">({d.rank}순위)</span> {d.type==='manual' && <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}
+                                                            </button> : 
+                                                            <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className="flex-grow py-2.5 bg-red-50 border border-red-100 rounded-xl text-xs text-red-500 font-bold animate-pulse hover:bg-red-100">공석 배정하기</button>))}
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -1062,8 +1158,10 @@
                                     {vehiclesList.map(v => {
                                         const isReserved = !!currentDayData.reserved[v.id];
                                         const info = isReserved ? currentDayData.reserved[v.id] : {};
+                                        
                                         const currentDispatch = getDispatchResult().find(d => d.vehicle.id === v.id);
-                                        const assignedDrivers = currentDispatch && currentDispatch.slots.filter(s => s).map(s => s.nm).join(', ');
+                                        const assignedDrivers = currentDispatch && currentDispatch.slots ? currentDispatch.slots.filter(s => s).map(s => s.nm).join(', ') : '';
+
                                         return (
                                             <div key={v.id} className={`p-4 rounded-2xl border-2 transition-all ${isReserved ? 'border-blue-500 bg-white shadow-md' : 'border-slate-100 bg-slate-50 opacity-70'} font-bold`}>
                                                 <div className="flex justify-between items-center mb-2">
@@ -1072,7 +1170,11 @@
                                                             <input type="checkbox" checked={isReserved} onChange={() => toggleVehicleReservation(v.id)} className="w-5 h-5 rounded text-blue-600"/>
                                                             <div><div className="text-sm font-black">{v.name}</div><div className="text-[10px] text-slate-400 font-mono">{v.plate}</div></div>
                                                         </label>
-                                                        {isReserved && assignedDrivers && <div className="ml-8 mt-1 text-xs text-blue-600 font-bold flex items-center gap-1"><Icons.UserCheck className="w-3 h-3"/> {assignedDrivers}</div>}
+                                                        {isReserved && assignedDrivers && !info.isCancelled && (
+                                                            <div className="ml-8 mt-1 text-xs text-blue-600 font-bold flex items-center gap-1">
+                                                                <Icons.UserCheck className="w-3 h-3"/> {assignedDrivers}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         {isReserved ? (
@@ -1084,11 +1186,17 @@
                                                 </div>
                                                 {isReserved && (
                                                     <div className="mt-3 pt-3 border-t border-blue-50 space-y-3 animate-[fadeIn_0.2s_ease-out]">
-                                                        {/* ... (입력 필드들 유지) ... */}
-                                                        <label className="flex items-center gap-2 mb-2">
-                                                            <input type="checkbox" checked={info.isHolidayWork || false} onChange={(e) => updateVehicleInfo(v.id, 'isHolidayWork', e.target.checked)} className="w-4 h-4 text-orange-500 rounded"/>
-                                                            <span className="text-xs text-orange-600 font-bold">휴일 시간 적용</span>
-                                                        </label>
+                                                        <div className="flex gap-4 mb-2">
+                                                            <label className="flex items-center gap-2">
+                                                                <input type="checkbox" checked={info.isHolidayWork || false} onChange={(e) => updateVehicleInfo(v.id, 'isHolidayWork', e.target.checked)} className="w-4 h-4 text-orange-500 rounded"/>
+                                                                <span className="text-xs text-orange-600 font-bold">휴일 시간 적용</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-2">
+                                                                <input type="checkbox" checked={info.isCancelled || false} onChange={(e) => updateVehicleInfo(v.id, 'isCancelled', e.target.checked)} className="w-4 h-4 text-red-500 rounded"/>
+                                                                <span className="text-xs text-red-600 font-bold">예약 취소 (미운행)</span>
+                                                            </label>
+                                                        </div>
+
                                                         <div className="grid grid-cols-2 gap-2">
                                                             <AutoSaveInput value={info.custName} onSave={(val) => updateVehicleInfo(v.id, 'custName', val)} placeholder="예약자명" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
                                                             <AutoSaveInput value={info.custPhone} onSave={(val) => updateVehicleInfo(v.id, 'custPhone', val)} placeholder="연락처" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
@@ -1109,7 +1217,6 @@
                                                             <div className="flex items-center gap-1 border rounded-lg p-1.5 bg-white"><input type="number" step="0.1" value={info.km} onChange={(e) => updateVehicleInfo(v.id, 'km', parseFloat(e.target.value) || 0)} className="w-full text-right text-xs border-none outline-none font-extrabold font-bold"/><span className="text-[10px] text-slate-400">km</span></div>
                                                         </div>
 
-                                                        {/* 기타 옵션(직접입력) 조건 추가 */}
                                                         {(info.operationType === '성묘지원' || info.operationType === '나들이' || info.operationType === '시티투어' || info.duration === 'etc') && (
                                                             <div className="flex items-center gap-1 border border-emerald-300 rounded-lg p-1.5 bg-emerald-50">
                                                                 <span className="text-[10px] text-emerald-600 font-bold w-8">금액</span>
@@ -1152,7 +1259,6 @@
                     </footer>
 
                     {/* ... (모달 코드들 - vehicles, replace, data, stats - 유지) ... */}
-                    {/* (생략된 모달 코드들은 이전 응답의 내용을 그대로 사용합니다) */}
                     {modal.type === 'vehicles' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl">
@@ -1237,7 +1343,7 @@
                     )}
                     {modal.type === 'stats' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-5xl rounded-2xl overflow-hidden shadow-2xl h-[85vh] flex flex-col">
+                            <div className="bg-white w-full max-w-[95vw] lg:max-w-7xl rounded-2xl overflow-hidden shadow-2xl h-[85vh] flex flex-col">
                                 <div className="p-5 border-b font-bold flex flex-col gap-3 bg-slate-50">
                                     <div className="flex justify-between items-center">
                                         <div className="flex items-center gap-4">
@@ -1274,45 +1380,71 @@
                                 </div>
                                 <div className="flex-grow overflow-auto p-0 bg-white">
                                     {statsMode === 'monthly' ? (
-                                        <div className="p-6">
-                                            <table className="w-full text-left font-bold text-sm stats-table">
+                                        <div className="p-6 overflow-x-auto">
+                                            <table className="w-full text-left font-bold text-sm stats-table min-w-[900px]">
                                                 <thead>
                                                     <tr className="text-slate-500 border-b text-xs uppercase bg-slate-50">
                                                         <th className="pb-2 pl-4">이름</th>
                                                         <th className="text-center pb-2">당일</th>
                                                         <th className="text-center pb-2">1박</th>
                                                         <th className="text-center pb-2">2박</th>
-                                                        <th className="text-right pb-2">인정(h)</th>
+                                                        <th className="text-center pb-2 border-l border-slate-200">공공</th>
+                                                        <th className="text-center pb-2">시티</th>
+                                                        <th className="text-center pb-2">나들이</th>
+                                                        <th className="text-center pb-2">성묘</th>
+                                                        <th className="text-center pb-2">기타</th>
+                                                        <th className="text-right pb-2 border-l border-slate-200">인정(h)</th>
                                                         <th className="text-right pb-2">금월 수당</th>
-                                                        <th className="text-right pb-2 pr-4 bg-blue-50 text-blue-700">금년 누적</th>
+                                                        <th className="text-right pb-2 pr-4 bg-blue-50 text-blue-700">금년 예상합계</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {(() => {
                                                         const stats = calculateStatsForRange(statsYear, statsMonth, statsYear, statsMonth);
                                                         const yearlyStatsAll = calculateStatsForRange(statsYear, 0, statsYear, 11);
+                                                        
                                                         const totalPay = stats.reduce((acc, curr) => acc + curr.tM, 0);
                                                         const totalHours = stats.reduce((acc, curr) => acc + curr.tA, 0);
                                                         const totalYearPay = yearlyStatsAll.reduce((acc, curr) => acc + curr.totalMoney, 0);
+                                                        
+                                                        const totalC1 = stats.reduce((acc, curr) => acc + curr.c1, 0);
+                                                        const totalC2 = stats.reduce((acc, curr) => acc + curr.c2, 0);
+                                                        const totalC3 = stats.reduce((acc, curr) => acc + curr.c3, 0);
+                                                        const totalPub = stats.reduce((acc, curr) => acc + (curr.typeCounts['공공예약'] || 0), 0);
+                                                        const totalCity = stats.reduce((acc, curr) => acc + (curr.typeCounts['시티투어'] || 0), 0);
+                                                        const totalPicnic = stats.reduce((acc, curr) => acc + (curr.typeCounts['나들이'] || 0), 0);
+                                                        const totalGrave = stats.reduce((acc, curr) => acc + (curr.typeCounts['성묘지원'] || 0), 0);
+                                                        const totalEtc = stats.reduce((acc, curr) => acc + (curr.typeCounts['기타'] || 0), 0);
+
                                                         return (
                                                             <>
                                                                 {stats.map((s, i) => (
-                                                                    <React.Fragment key={i}>
-                                                                        <tr className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition" onClick={() => setExpandedStatsDriver(expandedStatsDriver === i ? null : i)}>
-                                                                            <td className="py-3 pl-4 font-extrabold flex items-center gap-2">{s.nm} {expandedStatsDriver === i ? <Icons.ChevronUpCircle className="w-4 h-4 text-slate-400"/> : <Icons.ChevronDownCircle className="w-4 h-4 text-slate-300"/>}</td>
-                                                                            <td className="text-center text-slate-400">{s.c1}</td>
-                                                                            <td className="text-center text-blue-400">{s.c2}</td>
-                                                                            <td className="text-center text-orange-400">{s.c3}</td>
-                                                                            <td className="text-right text-blue-600 font-black">{s.tA.toFixed(1)}</td>
-                                                                            <td className="text-right text-emerald-600 font-black">{s.tM.toLocaleString()}</td>
-                                                                            <td className="text-right font-black bg-blue-50/50 text-blue-800 pr-4 border-l border-slate-100">{yearlyStatsAll[i].totalMoney.toLocaleString()}</td>
-                                                                        </tr>
-                                                                        {expandedStatsDriver === i && (<tr className="bg-slate-50 border-b border-slate-100"><td colSpan="7" className="p-4"><div className="flex flex-wrap gap-2 text-xs">{Object.entries(s.typeCounts).map(([type, count]) => (<div key={type} className="px-3 py-1.5 bg-white border rounded-lg shadow-sm flex items-center gap-2"><span className="text-slate-500 font-medium">{type}</span><span className="font-bold text-slate-800">{count}회</span></div>))}{Object.keys(s.typeCounts).length === 0 && <span className="text-slate-400 pl-2">이달 운행 기록이 없습니다.</span>}</div></td></tr>)}
-                                                                    </React.Fragment>
+                                                                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                                                                        <td className="py-3 pl-4 font-extrabold">{s.nm}</td>
+                                                                        <td className={`text-center ${s.c1 > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{s.c1 > 0 ? s.c1 : '-'}</td>
+                                                                        <td className={`text-center ${s.c2 > 0 ? 'text-blue-500' : 'text-slate-300'}`}>{s.c2 > 0 ? s.c2 : '-'}</td>
+                                                                        <td className={`text-center ${s.c3 > 0 ? 'text-orange-500' : 'text-slate-300'}`}>{s.c3 > 0 ? s.c3 : '-'}</td>
+                                                                        <td className={`text-center border-l border-slate-100 ${s.typeCounts['공공예약'] > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{s.typeCounts['공공예약'] || '-'}</td>
+                                                                        <td className={`text-center ${s.typeCounts['시티투어'] > 0 ? 'text-blue-600' : 'text-slate-300'}`}>{s.typeCounts['시티투어'] || '-'}</td>
+                                                                        <td className={`text-center ${s.typeCounts['나들이'] > 0 ? 'text-emerald-500' : 'text-slate-300'}`}>{s.typeCounts['나들이'] || '-'}</td>
+                                                                        <td className={`text-center ${s.typeCounts['성묘지원'] > 0 ? 'text-indigo-500' : 'text-slate-300'}`}>{s.typeCounts['성묘지원'] || '-'}</td>
+                                                                        <td className={`text-center ${s.typeCounts['기타'] > 0 ? 'text-purple-500' : 'text-slate-300'}`}>{s.typeCounts['기타'] || '-'}</td>
+                                                                        <td className="text-right text-blue-600 font-black border-l border-slate-100">{s.tA.toFixed(1)}</td>
+                                                                        <td className="text-right text-emerald-600 font-black">{s.tM.toLocaleString()}</td>
+                                                                        <td className="text-right font-black bg-blue-50/50 text-blue-800 pr-4 border-l border-slate-100">{yearlyStatsAll[i].totalMoney.toLocaleString()}</td>
+                                                                    </tr>
                                                                 ))}
                                                                 <tr className="bg-slate-100 border-t-2 border-slate-200">
-                                                                    <td colSpan="4" className="py-4 pl-4 text-right font-black text-slate-600">월 총계</td>
-                                                                    <td className="py-4 text-right font-black text-blue-600 text-sm">{totalHours.toFixed(1)}h</td>
+                                                                    <td className="py-4 pl-4 text-left font-black text-slate-600">월 총계</td>
+                                                                    <td className="py-4 text-center font-black text-slate-700">{totalC1}</td>
+                                                                    <td className="py-4 text-center font-black text-blue-600">{totalC2}</td>
+                                                                    <td className="py-4 text-center font-black text-orange-600">{totalC3}</td>
+                                                                    <td className="py-4 text-center font-black text-slate-700 border-l border-slate-200">{totalPub}</td>
+                                                                    <td className="py-4 text-center font-black text-blue-600">{totalCity}</td>
+                                                                    <td className="py-4 text-center font-black text-emerald-600">{totalPicnic}</td>
+                                                                    <td className="py-4 text-center font-black text-indigo-600">{totalGrave}</td>
+                                                                    <td className="py-4 text-center font-black text-purple-600">{totalEtc}</td>
+                                                                    <td className="py-4 text-right font-black text-blue-600 text-sm border-l border-slate-200">{totalHours.toFixed(1)}h</td>
                                                                     <td className="py-4 text-right font-black text-emerald-600 text-lg">{totalPay.toLocaleString()}</td>
                                                                     <td className="py-4 pr-4 text-right font-black text-blue-700 text-lg border-l border-slate-200 bg-blue-100">{totalYearPay.toLocaleString()}</td>
                                                                 </tr>
@@ -1323,44 +1455,88 @@
                                             </table>
                                         </div>
                                     ) : (
-                                        <div className="relative">
-                                            <table className="w-full text-left font-bold text-xs stats-table">
+                                        <div className="p-6 overflow-x-auto">
+                                            <table className="w-full text-left font-bold text-xs stats-table min-w-[1200px]">
                                                 <thead>
-                                                    <tr className="bg-slate-50 border-b text-slate-600">
-                                                        <th className="pl-4 py-3 bg-slate-50 left-0 z-20">이름</th>
-                                                        {Array.from({length: 12}).map((_, m) => (<th key={m} className="text-right px-2 min-w-[70px]">{m+1}월</th>))}
-                                                        <th className="text-right pr-4 bg-blue-50 text-blue-700 z-10 sticky right-0">합계</th>
+                                                    <tr className="bg-slate-50 border-b text-slate-600 text-xs uppercase">
+                                                        <th className="pl-4 py-3 sticky left-0 bg-slate-50 z-20 border-r border-slate-200">이름</th>
+                                                        <th className="text-center px-2">당일</th>
+                                                        <th className="text-center px-2">1박</th>
+                                                        <th className="text-center px-2">2박</th>
+                                                        <th className="text-center px-2 border-l border-slate-200">공공</th>
+                                                        <th className="text-center px-2">시티</th>
+                                                        <th className="text-center px-2">나들이</th>
+                                                        <th className="text-center px-2">성묘</th>
+                                                        <th className="text-center px-2">기타</th>
+                                                        {Array.from({length: 12}).map((_, m) => (<th key={m} className={`text-right px-2 min-w-[60px] ${m===0 ? 'border-l border-slate-200' : ''}`}>{m+1}월</th>))}
+                                                        <th className="text-right pr-4 bg-blue-50 text-blue-700 z-10 sticky right-0 border-l border-slate-200">합계</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {(() => {
-                                                        const stats = driverNames.map(nm => ({ nm, months: Array(12).fill({m:0, h:0}), totalMoney:0, totalHours:0 }));
+                                                        const stats = driverNames.map(nm => ({ nm, months: Array(12).fill({m:0, h:0}), totalMoney:0, totalHours:0, c1:0, c2:0, c3:0, typeCounts:{} }));
                                                         for(let m=0; m<12; m++) {
                                                             const mStats = calculateStatsForRange(statsYear, m, statsYear, m);
                                                             mStats.forEach((d, idx) => {
                                                                 stats[idx].months[m] = { m: d.tM, h: d.tA };
                                                                 stats[idx].totalMoney += d.tM;
                                                                 stats[idx].totalHours += d.tA;
+                                                                stats[idx].c1 += d.c1;
+                                                                stats[idx].c2 += d.c2;
+                                                                stats[idx].c3 += d.c3;
+                                                                Object.entries(d.typeCounts).forEach(([k, v]) => {
+                                                                    stats[idx].typeCounts[k] = (stats[idx].typeCounts[k] || 0) + v;
+                                                                });
                                                             });
                                                         }
+                                                        
                                                         let monthlyTotals = Array(12).fill(0);
                                                         let grandTotal = 0;
+                                                        let totalC1=0, totalC2=0, totalC3=0, totalPub=0, totalCity=0, totalPicnic=0, totalGrave=0, totalEtc=0;
+                                                        
                                                         const rows = stats.map((s, i) => {
                                                             s.months.forEach((d, m) => { monthlyTotals[m] += (yearlyViewType === 'money' ? d.m : d.h); });
                                                             const rowTotal = yearlyViewType === 'money' ? s.totalMoney : s.totalHours;
                                                             grandTotal += rowTotal;
+                                                            
+                                                            totalC1 += s.c1; totalC2 += s.c2; totalC3 += s.c3;
+                                                            totalPub += (s.typeCounts['공공예약'] || 0);
+                                                            totalCity += (s.typeCounts['시티투어'] || 0);
+                                                            totalPicnic += (s.typeCounts['나들이'] || 0);
+                                                            totalGrave += (s.typeCounts['성묘지원'] || 0);
+                                                            totalEtc += (s.typeCounts['기타'] || 0);
+
                                                             return (
-                                                                <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                                                                <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 transition">
                                                                     <td className="pl-4 py-2 font-extrabold sticky left-0 bg-white z-10 border-r border-slate-100">{s.nm}</td>
-                                                                    {s.months.map((d, m) => { const val = yearlyViewType === 'money' ? d.m : d.h; return (<td key={m} className={`text-right px-2 ${val === 0 ? 'text-slate-200' : 'text-slate-700'}`}>{val > 0 ? (yearlyViewType === 'money' ? val.toLocaleString() : val.toFixed(1)) : '-'}</td>); })}
+                                                                    <td className={`text-center ${s.c1 > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{s.c1 > 0 ? s.c1 : '-'}</td>
+                                                                    <td className={`text-center ${s.c2 > 0 ? 'text-blue-500' : 'text-slate-300'}`}>{s.c2 > 0 ? s.c2 : '-'}</td>
+                                                                    <td className={`text-center ${s.c3 > 0 ? 'text-orange-500' : 'text-slate-300'}`}>{s.c3 > 0 ? s.c3 : '-'}</td>
+                                                                    <td className={`text-center border-l border-slate-100 ${s.typeCounts['공공예약'] > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{s.typeCounts['공공예약'] || '-'}</td>
+                                                                    <td className={`text-center ${s.typeCounts['시티투어'] > 0 ? 'text-blue-600' : 'text-slate-300'}`}>{s.typeCounts['시티투어'] || '-'}</td>
+                                                                    <td className={`text-center ${s.typeCounts['나들이'] > 0 ? 'text-emerald-500' : 'text-slate-300'}`}>{s.typeCounts['나들이'] || '-'}</td>
+                                                                    <td className={`text-center ${s.typeCounts['성묘지원'] > 0 ? 'text-indigo-500' : 'text-slate-300'}`}>{s.typeCounts['성묘지원'] || '-'}</td>
+                                                                    <td className={`text-center ${s.typeCounts['기타'] > 0 ? 'text-purple-500' : 'text-slate-300'}`}>{s.typeCounts['기타'] || '-'}</td>
+                                                                    {s.months.map((d, m) => { 
+                                                                        const val = yearlyViewType === 'money' ? d.m : d.h; 
+                                                                        return (<td key={m} className={`text-right px-2 ${m===0 ? 'border-l border-slate-100' : ''} ${val === 0 ? 'text-slate-200' : 'text-slate-700'}`}>{val > 0 ? (yearlyViewType === 'money' ? val.toLocaleString() : val.toFixed(1)) : '-'}</td>); 
+                                                                    })}
                                                                     <td className="text-right font-black pr-4 bg-blue-50/30 text-blue-700 sticky right-0 border-l border-slate-100">{yearlyViewType === 'money' ? rowTotal.toLocaleString() : rowTotal.toFixed(1)}</td>
                                                                 </tr>
                                                             );
                                                         });
                                                         rows.push(
                                                             <tr key="total" className="bg-slate-100 font-black border-t-2 border-slate-200">
-                                                                <td className="pl-4 py-3 sticky left-0 bg-slate-100 z-10 border-r border-slate-200 text-slate-600">월별 합계</td>
-                                                                {monthlyTotals.map((val, m) => (<td key={m} className="text-right px-2 text-slate-700">{yearlyViewType === 'money' ? val.toLocaleString() : val.toFixed(1)}</td>))}
+                                                                <td className="pl-4 py-3 sticky left-0 bg-slate-100 z-10 border-r border-slate-200 text-slate-600">연간 합계</td>
+                                                                <td className="text-center text-slate-700">{totalC1}</td>
+                                                                <td className="text-center text-blue-600">{totalC2}</td>
+                                                                <td className="text-center text-orange-600">{totalC3}</td>
+                                                                <td className="text-center text-slate-700 border-l border-slate-200">{totalPub}</td>
+                                                                <td className="text-center text-blue-600">{totalCity}</td>
+                                                                <td className="text-center text-emerald-600">{totalPicnic}</td>
+                                                                <td className="text-center text-indigo-600">{totalGrave}</td>
+                                                                <td className="text-center text-purple-600">{totalEtc}</td>
+                                                                {monthlyTotals.map((val, m) => (<td key={m} className={`text-right px-2 text-slate-700 ${m===0 ? 'border-l border-slate-200' : ''}`}>{yearlyViewType === 'money' ? val.toLocaleString() : val.toFixed(1)}</td>))}
                                                                 <td className="text-right pr-4 bg-blue-100 text-blue-800 sticky right-0 border-l border-slate-300">{yearlyViewType === 'money' ? grandTotal.toLocaleString() : grandTotal.toFixed(1)}</td>
                                                             </tr>
                                                         );
