@@ -829,6 +829,7 @@
             };
             const addVehicle = async (name, plate, type) => { await handleSaveMaster(null, [...vehiclesList, { id: 'V_' + Date.now(), name, plate, type, capacity: type === 'BUS' ? 2 : 1 }]); };
             const removeVehicle = async (id) => { if (confirm("삭제하시겠습니까?")) await handleSaveMaster(null, vehiclesList.filter(v => v.id !== id)); };
+            const updateVehiclePlate = async (id, newPlate) => { await handleSaveMaster(null, vehiclesList.map(v => v.id === id ? { ...v, plate: newPlate } : v)); };
 
             const toggleDriverStatus = (idx) => { 
                 const n = { ...currentDayData, driverStatus: [...currentDayData.driverStatus], overrides: { ...currentDayData.overrides } }; 
@@ -1508,11 +1509,16 @@
                                     <div className="grid grid-cols-2 gap-2 max-h-[400px] overflow-y-auto">
                                         {vehiclesList.map(v => (
                                             <div key={v.id} className="flex justify-between items-center p-3 border rounded-lg text-sm font-bold bg-white">
-                                                <div className="flex flex-col">
+                                                <div className="flex flex-col w-full mr-2">
                                                     <span>{v.name}</span>
-                                                    <span className="text-[10px] text-slate-400 font-normal">{v.plate}</span>
+                                                    <AutoSaveInput 
+                                                        value={v.plate} 
+                                                        onSave={(val) => updateVehiclePlate(v.id, val)} 
+                                                        placeholder="번호 입력" 
+                                                        className="text-[10px] text-slate-400 font-normal outline-none bg-transparent hover:bg-slate-50 focus:bg-slate-50 rounded px-1 -ml-1 w-full transition-colors"
+                                                    />
                                                 </div>
-                                                <button onClick={() => removeVehicle(v.id)} className="text-red-300 hover:text-red-500"><Icons.Trash2 className="w-4 h-4"/></button>
+                                                <button onClick={() => removeVehicle(v.id)} className="text-red-300 hover:text-red-500 shrink-0"><Icons.Trash2 className="w-4 h-4"/></button>
                                             </div>
                                         ))}
                                     </div>
