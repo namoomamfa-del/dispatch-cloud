@@ -1361,10 +1361,6 @@
                                                             </div>
                                                         )}
 
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                            <div className="flex items-center gap-1"><span className="text-[10px] text-slate-400 w-6">출근</span><input type="time" value={info.startTime} onChange={(e) => updateVehicleInfo(v.id, 'startTime', e.target.value)} className="w-full text-xs border rounded-lg p-1.5 font-bold"/></div>
-                                                            <div className="flex items-center gap-1"><span className="text-[10px] text-slate-400 w-6">종료</span><input type="time" value={info.endTime} onChange={(e) => updateVehicleInfo(v.id, 'endTime', e.target.value)} className="w-full text-xs border rounded-lg p-1.5 font-bold"/></div>
-                                                        </div>
                                                         <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', (e.target.value === 'seoul' || e.target.value === 'etc') ? e.target.value : parseInt(e.target.value))} className="w-full text-center text-xs border rounded-lg p-2 bg-white font-bold mt-1">
                                                             <option value={1}>당일 ({(paySettings.day/10000).toFixed(2)}만)</option>
                                                             <option value={2}>1박 ({(paySettings.sleep*2/10000).toFixed(2)}만)</option>
@@ -1511,27 +1507,12 @@
                                             <div key={v.id} className="flex justify-between items-center p-3 border rounded-lg text-sm font-bold bg-white">
                                                 <div className="flex flex-col w-full mr-2">
                                                     <span>{v.name}</span>
-                                                    <div className="flex items-center gap-1 mt-1">
-                                                        <input 
-                                                            type="text"
-                                                            id={`plate-input-${v.id}`}
-                                                            defaultValue={v.plate} 
-                                                            placeholder="번호 입력" 
-                                                            className="text-[10px] text-slate-600 font-normal border border-slate-200 outline-none bg-transparent focus:bg-white rounded px-1.5 py-0.5 w-full transition-colors"
-                                                        />
-                                                        <button 
-                                                            onClick={() => {
-                                                                const el = document.getElementById(`plate-input-${v.id}`);
-                                                                if(el) {
-                                                                    updateVehiclePlate(v.id, el.value);
-                                                                    alert('차량번호가 변경되었습니다.');
-                                                                }
-                                                            }} 
-                                                            className="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded font-bold hover:bg-indigo-100 whitespace-nowrap shrink-0"
-                                                        >
-                                                            저장
-                                                        </button>
-                                                    </div>
+                                                    <AutoSaveInput 
+                                                        value={v.plate} 
+                                                        onSave={(val) => updateVehiclePlate(v.id, val)} 
+                                                        placeholder="번호 입력" 
+                                                        className="text-[10px] text-slate-400 font-normal outline-none bg-transparent hover:bg-slate-50 focus:bg-slate-50 rounded px-1 -ml-1 w-full transition-colors"
+                                                    />
                                                 </div>
                                                 <button onClick={() => removeVehicle(v.id)} className="text-red-300 hover:text-red-500 shrink-0"><Icons.Trash2 className="w-4 h-4"/></button>
                                             </div>
