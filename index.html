@@ -50,7 +50,7 @@
     <div id="root"></div>
 
     <script type="text/babel" data-presets="react,env">
-        // --- [설정] Firebase 설정 (본인의 설정으로 교체하세요) ---
+        // --- [설정] Firebase 설정 (무조건 사용자 본인 DB 강제 연결) ---
         const firebaseConfig = {
             apiKey: "AIzaSyCgdSAh6RLdKnVuvUSVT9tIKrGvLr9ajys",
             authDomain: "carainge-59142.firebaseapp.com",
@@ -61,6 +61,7 @@
             measurementId: "G-MTPB3SG23N"
         };
 
+        // 데이터가 저장된 고유 폴더명 강제 지정
         const APP_ID = 'vFinal_React_Dispatch_v1';
 
         // --- Firebase 초기화 ---
@@ -324,6 +325,8 @@
                 const duration = info.duration;
                 
                 if (duration === 'seoul' || duration === 'etc') return 0;
+                if (duration === 'grave') return paySettings.grave || 0;
+                if (duration === 'picnic') return paySettings.picnic || 0;
                 
                 if (type === '성묘지원') return paySettings.grave || 0;
                 if (type === '나들이') return paySettings.picnic || 0;
@@ -699,7 +702,10 @@
                                         stats[dId].tM += pay;
                                         stats[dId].totalMoney += pay;
                                         stats[dId].totalHours += t.adjusted;
-                                        const opType = info.operationType || '공공예약';
+                                        
+                                        let opType = info.operationType || '공공예약';
+                                        if (info.duration === 'grave') opType = '성묘지원';
+                                        if (info.duration === 'picnic') opType = '나들이';
                                         stats[dId].typeCounts[opType] = (stats[dId].typeCounts[opType] || 0) + 1;
                                     }
                                 }
@@ -889,7 +895,7 @@
                     n.overrides = nO;
                 } else {
                     n.reserved[vId] = { 
-                        km: 0, duration: 1, destination: '', itinerary: '', 
+                        km: 0, duration: 1, destination: '', 
                         dailyTimes: [{ startTime: '09:00', endTime: '18:00', isHolidayWork: false }],
                         startTime: '09:00', endTime: '18:00', isHolidayWork: false, // 하위 호환성 유지
                         custName: '', custPhone: '', memo: '', operationType: '공공예약', customPay: 0, isCancelled: false, isUnavailable: false 
@@ -900,7 +906,7 @@
             const updateVehicleInfo = (vId, field, value) => { const n = { ...currentDayData, reserved: { ...currentDayData.reserved } }; 
                 if (n.reserved[vId]) { 
                     if (field === 'duration') {
-                        const numDuration = (value === 'seoul' || value === 'etc') ? 1 : parseInt(value);
+                        const numDuration = (['seoul', 'etc', 'grave', 'picnic'].includes(value)) ? 1 : parseInt(value);
                         let newDailyTimes = [...(n.reserved[vId].dailyTimes || [{startTime: n.reserved[vId].startTime || '09:00', endTime: n.reserved[vId].endTime || '18:00', isHolidayWork: n.reserved[vId].isHolidayWork || false}])];
                         if (numDuration > newDailyTimes.length) {
                             for (let i = newDailyTimes.length; i < numDuration; i++) {
@@ -994,7 +1000,7 @@
                                         
                                         (pastDayData.dispatchResult || []).forEach(item => {
                                             const rawDuration = item.info.duration;
-                                            const duration = (rawDuration === 'seoul' || rawDuration === 'etc') ? 1 : rawDuration;
+                                            const duration = (['seoul', 'etc', 'grave', 'picnic'].includes(rawDuration)) ? 1 : rawDuration;
 
                                             if (duration > k) {
                                                 let colorClass = "bg-slate-50 text-slate-800";
@@ -1006,7 +1012,7 @@
                                                 } else if (duration >= 3) { 
                                                     colorClass = "bg-orange-100 text-orange-800 font-bold border border-orange-200"; 
                                                 } else { 
-                                                    if (item.info.operationType === '공공예약') colorClass = "bg-indigo-100 text-indigo-900 font-extrabold border border-indigo-200"; 
+                                                    if (item.info.operationType === '공공예약' || rawDuration === 'grave' || rawDuration === 'picnic') colorClass = "bg-indigo-100 text-indigo-900 font-extrabold border border-indigo-200"; 
                                                     else if (item.info.operationType === '시티투어') colorClass = "bg-blue-50 text-blue-700 font-bold border border-blue-100"; 
                                                 }
                                                 
@@ -1077,14 +1083,19 @@
                                                                 {group.duration - 1}박
                                                             </span>
                                                         )}
-                                                        {group.operationType === '공공예약' && !group.isCancelled && (
+                                                        {(group.operationType === '공공예약' && !['grave', 'picnic', 'etc', 'seoul'].includes(group.rawDuration)) && !group.isCancelled && (
                                                             <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-indigo-500 rounded">
                                                                 공공
                                                             </span>
                                                         )}
-                                                        {group.operationType === '성묘지원' && !group.isCancelled && (
+                                                        {(group.operationType === '성묘지원' || group.rawDuration === 'grave') && !group.isCancelled && (
                                                             <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-blue-500 rounded">
                                                                 성묘
+                                                            </span>
+                                                        )}
+                                                        {(group.operationType === '나들이' || group.rawDuration === 'picnic') && !group.isCancelled && (
+                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-emerald-500 rounded">
+                                                                나들이
                                                             </span>
                                                         )}
                                                         {group.operationType === '시티투어' && !group.isCancelled && (
@@ -1204,13 +1215,22 @@
                                             <p className="text-sm font-bold text-rose-800 whitespace-pre-wrap leading-snug">{currentDayData.dailyMemo}</p>
                                         </div>
                                         <button 
-                                            onClick={() => {
+                                            type="button"
+                                            onClick={async () => {
                                                 if(confirm('알림을 삭제하시겠습니까?')) {
-                                                    const n = { ...currentDayData, dailyMemo: '' };
-                                                    handleSaveDay(n);
+                                                    try {
+                                                        await db.doc(`artifacts/${APP_ID}/public/data/calendar/${selectedDateStr}`).set({
+                                                            dailyMemo: firebase.firestore.FieldValue.delete()
+                                                        }, { merge: true });
+                                                    } catch (error) {
+                                                        console.error("알림 삭제 중 오류:", error);
+                                                        const n = { ...currentDayData };
+                                                        delete n.dailyMemo;
+                                                        handleSaveDay(n);
+                                                    }
                                                 }
                                             }} 
-                                            className="absolute top-3 right-3 text-rose-300 hover:text-rose-600 p-1 rounded-md hover:bg-rose-100 transition-colors"
+                                            className="absolute top-3 right-3 text-rose-400 hover:text-rose-700 p-1.5 rounded-md hover:bg-rose-100 transition-colors"
                                             title="알림 삭제"
                                         >
                                             <Icons.X className="w-4 h-4" />
@@ -1234,14 +1254,13 @@
                                                         <div>
                                                             <div className="text-base font-black text-slate-900">{item.vehicle.name} <span className="text-xs text-slate-500 font-normal ml-1">{item.vehicle.plate}</span></div>
                                                             <div className="text-sm text-emerald-600 font-bold mt-0.5">{item.info.destination || '미입력'}</div>
-                                                            {item.info.itinerary && <div className="text-[11px] text-slate-500 mt-0.5 bg-slate-50 p-1 rounded border border-slate-100">{item.info.itinerary}</div>}
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
                                                         {item.info.isCancelled && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold mr-1">취소됨</span>}
                                                         {item.info.isUnavailable && <span className="text-[10px] bg-purple-100 text-purple-600 px-2 py-0.5 rounded font-bold mr-1">운전원변경</span>}
                                                         <span className="text-xs bg-white border border-slate-200 px-2.5 py-1 rounded-md text-slate-600 shadow-sm font-bold">
-                                                            {item.info.duration === 'seoul' ? '서울' : (item.info.duration === 'etc' ? '기타' : (item.info.duration > 1 ? (item.info.duration-1)+'박' : '당일'))}
+                                                            {item.info.duration === 'seoul' ? '서울' : (item.info.duration === 'etc' ? '기타' : (item.info.duration === 'grave' ? '성묘지원' : (item.info.duration === 'picnic' ? '나들이' : (item.info.duration > 1 ? (item.info.duration-1)+'박' : '당일'))))}
                                                         </span>
                                                         <div className="text-[10px] text-slate-500 mt-1.5 font-medium leading-tight max-w-[150px] break-keep">{timesInfo}</div>
                                                         <div className="mt-1.5"><span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100 font-bold">{item.info.operationType || '공공예약'}</span></div>
@@ -1389,7 +1408,6 @@
                                                             <AutoSaveInput value={info.custPhone} onSave={(val) => updateVehicleInfo(v.id, 'custPhone', val)} placeholder="연락처" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
                                                         </div>
                                                         <AutoSaveInput value={info.destination} onSave={(val) => updateVehicleInfo(v.id, 'destination', val)} placeholder="행선지" className="w-full text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
-                                                        <AutoSaveInput value={info.itinerary} onSave={(val) => updateVehicleInfo(v.id, 'itinerary', val)} placeholder="상세 일정 (예: 09:00 출발 ~ 12:00 도착)" className="w-full text-xs border rounded-lg p-2 outline-none bg-white font-bold shadow-sm"/>
                                                         
                                                         <div className="grid grid-cols-2 gap-2">
                                                             <div className="flex items-center gap-1">
@@ -1405,7 +1423,7 @@
                                                             <div className="flex items-center gap-1 border rounded-lg p-1.5 bg-white"><input type="number" step="0.1" value={info.km} onChange={(e) => updateVehicleInfo(v.id, 'km', parseFloat(e.target.value) || 0)} className="w-full text-right text-xs border-none outline-none font-extrabold font-bold"/><span className="text-[10px] text-slate-400">km</span></div>
                                                         </div>
 
-                                                        {(info.operationType === '성묘지원' || info.operationType === '나들이' || info.operationType === '시티투어' || info.duration === 'etc') && (
+                                                        {(info.operationType === '성묘지원' || info.operationType === '나들이' || info.operationType === '시티투어' || info.duration === 'etc' || info.duration === 'grave' || info.duration === 'picnic') && (
                                                             <div className="flex items-center gap-1 border border-emerald-300 rounded-lg p-1.5 bg-emerald-50">
                                                                 <span className="text-[10px] text-emerald-600 font-bold w-8">금액</span>
                                                                 <AutoSaveInput 
@@ -1413,8 +1431,8 @@
                                                                     value={info.customPay} 
                                                                     onSave={(val) => updateVehicleInfo(v.id, 'customPay', val)} 
                                                                     placeholder={
-                                                                        info.operationType === '성묘지원' ? `기본 ${(paySettings.grave||0).toLocaleString()}원 (변경시 입력)` : 
-                                                                        info.operationType === '나들이' ? `기본 ${(paySettings.picnic||0).toLocaleString()}원 (변경시 입력)` : 
+                                                                        (info.operationType === '성묘지원' || info.duration === 'grave') ? `기본 ${(paySettings.grave||0).toLocaleString()}원 (변경시 입력)` : 
+                                                                        (info.operationType === '나들이' || info.duration === 'picnic') ? `기본 ${(paySettings.picnic||0).toLocaleString()}원 (변경시 입력)` : 
                                                                         "금액 직접입력(원)"
                                                                     }
                                                                     className="w-full text-right text-xs bg-transparent outline-none font-extrabold font-bold text-emerald-700 placeholder:text-[9px] placeholder:font-normal"
@@ -1422,10 +1440,12 @@
                                                             </div>
                                                         )}
 
-                                                        <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', (e.target.value === 'seoul' || e.target.value === 'etc') ? e.target.value : parseInt(e.target.value))} className="w-full text-center text-xs border rounded-lg p-2 bg-white font-bold mt-1">
+                                                        <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', (['seoul', 'etc', 'grave', 'picnic'].includes(e.target.value)) ? e.target.value : parseInt(e.target.value))} className="w-full text-center text-xs border rounded-lg p-2 bg-white font-bold mt-1">
                                                             <option value={1}>당일 ({(paySettings.day/10000).toFixed(2)}만)</option>
                                                             <option value={2}>1박 ({(paySettings.sleep*2/10000).toFixed(2)}만)</option>
                                                             <option value={3}>2박 ({(paySettings.sleep*3/10000).toFixed(2)}만)</option>
+                                                            <option value="grave">성묘지원 ({(paySettings.grave/10000).toFixed(2)}만)</option>
+                                                            <option value="picnic">나들이 ({(paySettings.picnic/10000).toFixed(2)}만)</option>
                                                             <option value="seoul">서울 (0원)</option>
                                                             <option value="etc">기타 (직접입력)</option>
                                                         </select>
