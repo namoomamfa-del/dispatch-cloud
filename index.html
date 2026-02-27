@@ -49,7 +49,7 @@
 <body>
     <div id="root"></div>
 
-    <script type="text/babel">
+    <script type="text/babel" data-presets="react,env">
         // --- [설정] Firebase 설정 (본인의 설정으로 교체하세요) ---
         const firebaseConfig = {
             apiKey: "AIzaSyCgdSAh6RLdKnVuvUSVT9tIKrGvLr9ajys",
@@ -114,7 +114,8 @@
             Clock: ({className}) => <i className={`fa-regular fa-clock ${className}`} />,
             Money: ({className}) => <i className={`fa-solid fa-won-sign ${className}`} />,
             Palette: ({className}) => <i className={`fa-solid fa-palette ${className}`} />,
-            MessageCircle: ({className}) => <i className={`fa-regular fa-comment-dots ${className}`} />
+            MessageCircle: ({className}) => <i className={`fa-regular fa-comment-dots ${className}`} />,
+            Bell: ({className}) => <i className={`fa-regular fa-bell ${className}`} />
         };
 
         // --- 관외비 기본 설정 ---
@@ -350,15 +351,33 @@
 
             useEffect(() => { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }; }, [handleMouseMove]);
 
+            // 안전한 인증 흐름 적용 (시간 초과 방지)
             useEffect(() => {
-                const initAuth = async () => { if (!auth.currentUser) await auth.signInAnonymously(); };
+                let isMounted = true;
+                const initAuth = async () => { 
+                    try {
+                        // 사용자 본인의 Firebase 프로젝트에 접근하기 위해 익명 로그인만 사용
+                        if (!auth.currentUser) {
+                            await auth.signInAnonymously(); 
+                        }
+                    } catch (error) {
+                        console.error("Firebase 인증 실패:", error);
+                    }
+                };
                 initAuth();
-                const unsubscribeAuth = auth.onAuthStateChanged((u) => { if (u) setUser(u); });
-                return () => unsubscribeAuth();
+
+                const unsubscribeAuth = auth.onAuthStateChanged((u) => { 
+                    if (isMounted && u) setUser(u); 
+                });
+                return () => {
+                    isMounted = false;
+                    unsubscribeAuth();
+                };
             }, []);
 
             useEffect(() => {
                 if (!user) return;
+                
                 const unsubMaster = db.doc(`artifacts/${APP_ID}/public/data/settings/master`).onSnapshot((docSnap) => {
                     if (docSnap.exists) { 
                         const data = docSnap.data(); 
@@ -366,12 +385,22 @@
                         setVehiclesList(data.vehiclesList || []); 
                         setPaySettings({ ...DEFAULT_PAY_SETTINGS, ...(data.paySettings || {}) });
                     } 
-                    else { db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set({ driverNames: DEFAULT_DRIVERS, vehiclesList: DEFAULT_VEHICLES, paySettings: DEFAULT_PAY_SETTINGS }); }
+                    else { 
+                        db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set({ driverNames: DEFAULT_DRIVERS, vehiclesList: DEFAULT_VEHICLES, paySettings: DEFAULT_PAY_SETTINGS })
+                          .catch(e => console.error("초기 데이터 생성 실패:", e)); 
+                    }
+                    setIsLoading(false);
+                }, (error) => {
+                    console.error("마스터 데이터 읽기 실패 (시간 초과 등):", error);
                     setIsLoading(false);
                 });
+
                 const unsubCalendar = db.collection(`artifacts/${APP_ID}/public/data/calendar`).onSnapshot((snapshot) => {
                     const newSchedule = {}; snapshot.forEach((doc) => { newSchedule[doc.id] = doc.data(); }); setScheduleData(newSchedule);
+                }, (error) => {
+                    console.error("캘린더 데이터 읽기 실패:", error);
                 });
+
                 return () => { unsubMaster(); unsubCalendar(); };
             }, [user]);
 
@@ -633,6 +662,7 @@
                     driverRanks: currentRanks,
                     overrides: rawDayData.overrides || {},
                     isHoliday: isPublicHoliday(dateStr),
+                    dailyMemo: rawDayData.dailyMemo || "", // NEW: 메모 데이터 추가
                     _excludedIds: excludedIds,
                     dispatchResult: []
                 };
@@ -859,7 +889,7 @@
                     n.overrides = nO;
                 } else {
                     n.reserved[vId] = { 
-                        km: 0, duration: 1, destination: '', 
+                        km: 0, duration: 1, destination: '', itinerary: '', 
                         dailyTimes: [{ startTime: '09:00', endTime: '18:00', isHolidayWork: false }],
                         startTime: '09:00', endTime: '18:00', isHolidayWork: false, // 하위 호환성 유지
                         custName: '', custPhone: '', memo: '', operationType: '공공예약', customPay: 0, isCancelled: false, isUnavailable: false 
@@ -1024,6 +1054,11 @@
                                                     {d} {holidayName && <span className={`${holidayTextSize} ml-1 font-normal text-red-500 opacity-80 break-keep`}>{holidayName}</span>}
                                                 </span>
                                             </div>
+                                            {dayData.dailyMemo && (
+                                                <div className="w-full mt-0.5 p-1 bg-rose-50 border border-rose-200 rounded text-rose-600 text-[10px] font-bold leading-tight shadow-sm break-keep whitespace-normal">
+                                                    🔔 {dayData.dailyMemo}
+                                                </div>
+                                            )}
                                             <div className="w-full space-y-1 overflow-hidden mt-1">
                                                 {Object.values(vehicleGroups).map((group, gIdx) => (
                                                     <div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color} shadow-sm`}>
@@ -1131,6 +1166,7 @@
                             </div>
                         </div>
                         <div className="flex gap-2">
+                            <button onClick={() => setModal({ type: 'notification' })} className="bg-rose-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-rose-600 transition flex items-center gap-1"><Icons.Bell className="w-3 h-3"/>알림</button>
                             <button onClick={() => setModal({ type: 'paySettings' })} className="bg-yellow-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-yellow-600 transition flex items-center gap-1"><Icons.Money className="w-3 h-3"/>관외비</button>
                             <button onClick={() => setModal({ type: 'vehicles' })} className="bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-indigo-600 transition flex items-center gap-1"><Icons.Bus className="w-3 h-3"/>차량 관리</button>
                             <button onClick={() => setModal({ type: 'data' })} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-slate-200 transition flex items-center gap-1"><Icons.Database className="w-3 h-3"/>데이터 관리</button>
@@ -1159,6 +1195,29 @@
                                     <h2 className="text-lg font-extrabold flex items-center gap-2 text-slate-800"><Icons.Receipt className="text-emerald-600 w-5 h-5"/> 최종 배차 결과</h2>
                                     <span className="text-sm text-slate-500 font-bold">{selectedDateStr}</span>
                                 </div>
+                                
+                                {currentDayData.dailyMemo && (
+                                    <div className="mb-5 p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 shadow-sm relative group">
+                                        <Icons.Bell className="w-5 h-5 text-rose-500 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1 pr-6">
+                                            <h4 className="text-xs font-extrabold text-rose-600 mb-1">일정 알림</h4>
+                                            <p className="text-sm font-bold text-rose-800 whitespace-pre-wrap leading-snug">{currentDayData.dailyMemo}</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                if(confirm('알림을 삭제하시겠습니까?')) {
+                                                    const n = { ...currentDayData, dailyMemo: '' };
+                                                    handleSaveDay(n);
+                                                }
+                                            }} 
+                                            className="absolute top-3 right-3 text-rose-300 hover:text-rose-600 p-1 rounded-md hover:bg-rose-100 transition-colors"
+                                            title="알림 삭제"
+                                        >
+                                            <Icons.X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                )}
+
                                 <div className="space-y-4">
                                     {getDispatchResult().map((item, idx) => {
                                         const t = calculateTotalWorkHours(item.info, selectedDateStr);
@@ -1175,6 +1234,7 @@
                                                         <div>
                                                             <div className="text-base font-black text-slate-900">{item.vehicle.name} <span className="text-xs text-slate-500 font-normal ml-1">{item.vehicle.plate}</span></div>
                                                             <div className="text-sm text-emerald-600 font-bold mt-0.5">{item.info.destination || '미입력'}</div>
+                                                            {item.info.itinerary && <div className="text-[11px] text-slate-500 mt-0.5 bg-slate-50 p-1 rounded border border-slate-100">{item.info.itinerary}</div>}
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
@@ -1329,6 +1389,7 @@
                                                             <AutoSaveInput value={info.custPhone} onSave={(val) => updateVehicleInfo(v.id, 'custPhone', val)} placeholder="연락처" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
                                                         </div>
                                                         <AutoSaveInput value={info.destination} onSave={(val) => updateVehicleInfo(v.id, 'destination', val)} placeholder="행선지" className="w-full text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
+                                                        <AutoSaveInput value={info.itinerary} onSave={(val) => updateVehicleInfo(v.id, 'itinerary', val)} placeholder="상세 일정 (예: 09:00 출발 ~ 12:00 도착)" className="w-full text-xs border rounded-lg p-2 outline-none bg-white font-bold shadow-sm"/>
                                                         
                                                         <div className="grid grid-cols-2 gap-2">
                                                             <div className="flex items-center gap-1">
@@ -1410,6 +1471,43 @@
                             <p className="text-[10px]">© 2024 Vehicle Dispatch System. All rights reserved.</p>
                         </div>
                     </footer>
+
+                    {modal.type === 'notification' && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl">
+                                <div className="p-4 border-b font-bold flex justify-between bg-rose-50 text-rose-700">
+                                    <h3 className="flex items-center gap-2"><Icons.Bell className="w-4 h-4"/>일정 알림 등록</h3>
+                                    <button onClick={() => setModal({ type: null })} className="hover:text-rose-900"><Icons.X className="w-4 h-4"/></button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">적용 날짜</label>
+                                        <input type="date" id="notiDateInput" defaultValue={selectedDateStr} className="w-full border rounded-lg p-2 text-sm font-bold outline-none focus:ring-2 focus:ring-rose-400 bg-slate-50"/>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">알림 내용</label>
+                                        <textarea id="notiTextInput" placeholder="예: 전체 회식 (18:00)" className="w-full h-24 border rounded-lg p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-rose-400 bg-slate-50 resize-none"></textarea>
+                                    </div>
+                                    <button onClick={async () => {
+                                        const dateVal = document.getElementById('notiDateInput').value;
+                                        const textVal = document.getElementById('notiTextInput').value;
+                                        if(!dateVal) { alert('날짜를 선택해주세요.'); return; }
+                                        
+                                        try {
+                                            await db.doc(`artifacts/${APP_ID}/public/data/calendar/${dateVal}`).set({ dailyMemo: textVal }, { merge: true });
+                                            setModal({ type: null });
+                                        } catch (err) {
+                                            console.error("알림 저장 실패:", err);
+                                            alert("저장 중 오류가 발생했습니다.");
+                                        }
+                                    }} className="w-full bg-rose-500 text-white py-3 rounded-xl font-bold mt-2 hover:bg-rose-600 transition flex items-center justify-center gap-2">
+                                        <Icons.Plus className="w-4 h-4"/> 등록하기
+                                    </button>
+                                    <p className="text-[10px] text-slate-400 text-center">* 입력한 내용은 선택한 날짜의 달력에 표시됩니다.</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {modal.type === 'kakao' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
