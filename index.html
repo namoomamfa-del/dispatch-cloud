@@ -13,26 +13,19 @@
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/gh/moonspam/NanumSquare@2.0/nanumsquare.css">
 
     <style>
-        /* 폰트 적용: NanumSquare */
         body { font-family: 'NanumSquare', sans-serif; background-color: #f8fafc; -webkit-tap-highlight-color: transparent; }
-        
         .hide-scrollbar::-webkit-scrollbar { display: none; }
-        /* 로딩 스피너 */
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #2563eb; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        /* 애니메이션 */
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
-        /* 테이블 스타일 */
         .stats-table th, .stats-table td { white-space: nowrap; padding: 8px 12px; }
         .stats-table th { position: sticky; top: 0; background: #f8fafc; z-index: 10; }
-        
-        /* 캘린더 내부 텍스트 굵기 보정 */
         .cal-text-bold { font-weight: 800; }
     </style>
 
     <!-- 2. React 및 Babel -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
 
     <!-- 3. Firebase Compat 라이브러리 -->
@@ -50,7 +43,9 @@
     <div id="root"></div>
 
     <script type="text/babel" data-presets="react,env">
-        // --- [설정] Firebase 설정 (무조건 사용자 본인 DB 강제 연결) ---
+        const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+        // --- [설정] Firebase 설정 ---
         const firebaseConfig = {
             apiKey: "AIzaSyCgdSAh6RLdKnVuvUSVT9tIKrGvLr9ajys",
             authDomain: "carainge-59142.firebaseapp.com",
@@ -61,10 +56,8 @@
             measurementId: "G-MTPB3SG23N"
         };
 
-        // 데이터가 저장된 고유 폴더명 강제 지정
         const APP_ID = 'vFinal_React_Dispatch_v1';
 
-        // --- Firebase 초기화 ---
         if (!firebase.apps.length) {
             try {
                 firebase.initializeApp(firebaseConfig);
@@ -75,7 +68,7 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-        // --- Lucide 아이콘 대체 (FontAwesome 매핑) ---
+        // --- 아이콘 매핑 (문법 오류 수정됨) ---
         const Icons = {
             Cloud: ({className}) => <i className={`fa-solid fa-cloud ${className}`} />,
             AccessibleBus: ({className}) => (
@@ -122,10 +115,8 @@
             ClipboardList: ({className}) => <i className={`fa-solid fa-clipboard-list ${className}`} />
         };
 
-        // --- 관외비 기본 설정 ---
         const DEFAULT_PAY_SETTINGS = { day: 12500, sleep: 37500, grave: 0, picnic: 0 };
 
-        // --- 유틸리티 함수 ---
         const getTodayStr = () => {
             const now = new Date();
             const kstTime = now.getTime() + (9 * 60 * 60 * 1000);
@@ -239,7 +230,6 @@
             return { work: parseFloat(work.toFixed(1)), extra: parseFloat(extra.toFixed(1)), adjusted: parseFloat(adjusted.toFixed(3)), valid: true };
         };
 
-        // 다일간의 시간과 휴일 여부를 종합하여 합산하는 함수
         const calculateTotalWorkHours = (info, startDateStr) => {
             let totalWork = 0;
             let totalExtra = 0;
@@ -280,19 +270,15 @@
             { id: 'S14', name: '14호차', plate: '7714', type: 'SOLATI', capacity: 1 }
         ];
 
-        // --- 컴포넌트 ---
-        const { useState, useEffect, useMemo, useRef, useCallback } = React;
-
-        const AutoSaveInput = ({ value, onSave, className, placeholder, type = "text", ...props }) => {
+        const AutoSaveInput = ({ value, onSave, className, placeholder, type = "text", disabled, ...props }) => {
             const [localValue, setLocalValue] = useState(value || "");
             useEffect(() => { setLocalValue(value || ""); }, [value]);
             const handleChange = (e) => { setLocalValue(e.target.value); };
             const handleBlur = () => { if (localValue !== (value || "")) { onSave(localValue); } };
             const handleKeyDown = (e) => { if (e.key === 'Enter') { e.target.blur(); } }
-            return <input type={type} className={className} placeholder={placeholder} value={localValue} onChange={handleChange} onBlur={handleBlur} onKeyDown={handleKeyDown} {...props} />;
+            return <input type={type} className={className} placeholder={placeholder} value={localValue} onChange={handleChange} onBlur={handleBlur} onKeyDown={handleKeyDown} disabled={disabled} {...props} />;
         };
 
-        // 데이터가 변경(삭제)되었을 때 기존 데이터의 인덱스를 안전하게 보존하기 위한 헬퍼 함수
         const adaptStatus = (arr, def, n) => {
             if (!arr) return Array(n).fill(def);
             if (arr.length === n) return arr;
@@ -306,46 +292,36 @@
             const [isLoading, setIsLoading] = useState(true);
             const [selectedDateStr, setSelectedDateStr] = useState(getTodayStr());
             const [viewDate, setViewDate] = useState(getTodayDate());
-            const [modalDate, setModalDate] = useState(getTodayStr()); // 모달창용 날짜 상태
+            const [modalDate, setModalDate] = useState(getTodayStr());
             
             const [driverNames, setDriverNames] = useState([]);
             const [vehiclesList, setVehiclesList] = useState([]);
-            const [paySettings, setPaySettings] = useState(DEFAULT_PAY_SETTINGS); // 관외비 설정 상태
+            const [paySettings, setPaySettings] = useState(DEFAULT_PAY_SETTINGS);
             
             const [scheduleData, setScheduleData] = useState({});
             const [modal, setModal] = useState({ type: null, data: null });
             const [autoLinked, setAutoLinked] = useState(false);
             const [isCalendarExpanded, setIsCalendarExpanded] = useState(false); 
-            const [expandedStatsDriver, setExpandedStatsDriver] = useState(null);
             
-            // 정산 모드 (monthly, yearly) 및 상태
             const [statsMode, setStatsMode] = useState('monthly');
             const [statsYear, setStatsYear] = useState(new Date().getFullYear());
             const [statsMonth, setStatsMonth] = useState(new Date().getMonth());
             const [yearlyViewType, setYearlyViewType] = useState('money'); 
 
-            const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
-                return window.innerWidth >= 1024 ? window.innerWidth * 0.65 : 380;
-            });
+            const [leftPanelWidth, setLeftPanelWidth] = useState(() => window.innerWidth >= 1024 ? window.innerWidth * 0.65 : 380);
             const isDragging = useRef(false);
             const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
 
-            // --- 내부 함수로 이동한 calculatePay (성묘, 나들이 설정 반영) ---
             const calculatePay = (info) => {
                 if (info.customPay) return parseInt(info.customPay) || 0;
-                
                 const type = info.operationType || '공공예약';
                 const duration = info.duration;
-                
                 if (duration === 'seoul' || duration === 'etc') return 0;
                 if (duration === 'grave') return paySettings.grave || 0;
                 if (duration === 'picnic') return paySettings.picnic || 0;
-                
                 if (type === '성묘지원') return paySettings.grave || 0;
                 if (type === '나들이') return paySettings.picnic || 0;
-                
                 if (type !== '공공예약') return 0;
-                
                 if (duration <= 1) return paySettings.day;
                 return paySettings.sleep * duration; 
             };
@@ -367,55 +343,30 @@
 
             useEffect(() => { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }; }, [handleMouseMove]);
 
-            // 안전한 인증 흐름 적용 (시간 초과 방지)
             useEffect(() => {
                 let isMounted = true;
-                const initAuth = async () => { 
-                    try {
-                        if (!auth.currentUser) {
-                            await auth.signInAnonymously(); 
-                        }
-                    } catch (error) {
-                        console.error("Firebase 인증 실패:", error);
-                    }
-                };
+                const initAuth = async () => { try { if (!auth.currentUser) await auth.signInAnonymously(); } catch (error) { console.error("Firebase 인증 실패:", error); } };
                 initAuth();
-
-                const unsubscribeAuth = auth.onAuthStateChanged((u) => { 
-                    if (isMounted && u) setUser(u); 
-                });
-                return () => {
-                    isMounted = false;
-                    unsubscribeAuth();
-                };
+                const unsubscribeAuth = auth.onAuthStateChanged((u) => { if (isMounted && u) setUser(u); });
+                return () => { isMounted = false; unsubscribeAuth(); };
             }, []);
 
             useEffect(() => {
                 if (!user) return;
-                
                 const unsubMaster = db.doc(`artifacts/${APP_ID}/public/data/settings/master`).onSnapshot((docSnap) => {
                     if (docSnap.exists) { 
                         const data = docSnap.data(); 
                         setDriverNames(data.driverNames || []); 
                         setVehiclesList(data.vehiclesList || []); 
                         setPaySettings({ ...DEFAULT_PAY_SETTINGS, ...(data.paySettings || {}) });
-                    } 
-                    else { 
-                        db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set({ driverNames: DEFAULT_DRIVERS, vehiclesList: DEFAULT_VEHICLES, paySettings: DEFAULT_PAY_SETTINGS })
-                          .catch(e => console.error("초기 데이터 생성 실패:", e)); 
+                    } else { 
+                        db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set({ driverNames: DEFAULT_DRIVERS, vehiclesList: DEFAULT_VEHICLES, paySettings: DEFAULT_PAY_SETTINGS }); 
                     }
                     setIsLoading(false);
-                }, (error) => {
-                    console.error("마스터 데이터 읽기 실패 (시간 초과 등):", error);
-                    setIsLoading(false);
                 });
-
                 const unsubCalendar = db.collection(`artifacts/${APP_ID}/public/data/calendar`).onSnapshot((snapshot) => {
                     const newSchedule = {}; snapshot.forEach((doc) => { newSchedule[doc.id] = doc.data(); }); setScheduleData(newSchedule);
-                }, (error) => {
-                    console.error("캘린더 데이터 읽기 실패:", error);
                 });
-
                 return () => { unsubMaster(); unsubCalendar(); };
             }, [user]);
 
@@ -460,38 +411,21 @@
                 }
             };
 
-            const getPrevDateStr = (dateStr, days) => {
-                const d = new Date(dateStr);
-                d.setDate(d.getDate() - days);
-                return d.toISOString().split('T')[0];
-            };
-
             const calculateDispatchLogic = (dayData, drivers, vehicles, excludedDriverIds = new Set()) => {
                 if (!dayData) return [];
                 const currentRanks = dayData.driverRanks && dayData.driverRanks.length === drivers.length ? dayData.driverRanks : drivers.map((_, i) => i + 1);
                 
-                let pool = drivers.map((nm, i) => ({ 
-                    nm, id: i, 
-                    active: nm && (dayData.driverStatus ? dayData.driverStatus[i] : true), 
-                    rank: currentRanks[i] 
-                })).filter(d => d.active && !excludedDriverIds.has(d.id)).sort((a, b) => a.rank - b.rank);
+                let pool = drivers.map((nm, i) => ({ nm, id: i, active: nm && (dayData.driverStatus ? dayData.driverStatus[i] : true), rank: currentRanks[i] })).filter(d => d.active && !excludedDriverIds.has(d.id)).sort((a, b) => a.rank - b.rank);
                 
                 const reservedData = dayData.reserved || {};
                 const resIds = Object.keys(reservedData);
                 const sortedV = vehicles.filter(v => resIds.includes(v.id)).sort((a, b) => {
-                    const infoA = reservedData[a.id];
-                    const infoB = reservedData[b.id];
-                    if (a.type !== b.type) { return a.type === 'BUS' ? -1 : 1; }
-                    if (infoA.duration !== infoB.duration) { return infoA.duration - infoB.duration; }
-                    
-                    if ((infoA.km || 0) !== (infoB.km || 0)) { return (infoA.km || 0) - (infoB.km || 0); }
+                    const infoA = reservedData[a.id]; const infoB = reservedData[b.id];
+                    if (a.type !== b.type) return a.type === 'BUS' ? -1 : 1;
+                    if (infoA.duration !== infoB.duration) return infoA.duration - infoB.duration;
+                    if ((infoA.km || 0) !== (infoB.km || 0)) return (infoA.km || 0) - (infoB.km || 0);
                     if (a.type === 'BUS') {
-                        const getBusRank = (name) => {
-                            if (name.includes('3호')) return 1;
-                            if (name.includes('1호')) return 2;
-                            if (name.includes('2호')) return 3;
-                            return 4; 
-                        };
+                        const getBusRank = (name) => { if (name.includes('3호')) return 1; if (name.includes('1호')) return 2; if (name.includes('2호')) return 3; return 4; };
                         return getBusRank(a.name) - getBusRank(b.name);
                     }
                     return a.name.localeCompare(b.name);
@@ -502,32 +436,22 @@
                 Object.entries(dayData.overrides || {}).forEach(([key, dId]) => { manualAssignments[key] = dId; pool = pool.filter(p => p.id !== dId); });
 
                 sortedV.forEach(v => {
-                    const info = reservedData[v.id] || {};
+                    const info = dayData.reserved[v.id] || {};
                     const slots = [];
-                    
-                    for(let i=0; i<v.capacity; i++) {
+                    const effectiveCapacity = info.isSingleDriver ? 1 : v.capacity;
+                    for(let i=0; i<effectiveCapacity; i++) {
                         const key = `${v.id}_${i}`;
                         let autoDriver = null;
-
                         let shouldConsumeTurn = false;
                         if (info.isCancelled) shouldConsumeTurn = true;
                         else if (info.isUnavailable) shouldConsumeTurn = true;
                         else if (manualAssignments[key] === undefined) shouldConsumeTurn = true;
 
-                        if (shouldConsumeTurn && pool.length > 0) {
-                            autoDriver = pool.shift();
-                        }
+                        if (shouldConsumeTurn && pool.length > 0) autoDriver = pool.shift();
 
                         if (manualAssignments[key] !== undefined) {
                             const dId = manualAssignments[key];
-                            const driverName = drivers[dId];
-                            slots.push({ 
-                                nm: driverName || '삭제됨', 
-                                id: dId, 
-                                type: 'manual', 
-                                rank: currentRanks[dId],
-                                consumedAutoDriverId: autoDriver ? autoDriver.id : undefined 
-                            });
+                            slots.push({ nm: drivers[dId] || '삭제됨', id: dId, type: 'manual', rank: currentRanks[dId], consumedAutoDriverId: autoDriver ? autoDriver.id : undefined });
                         } else if (info.isUnavailable) {
                             slots.push(autoDriver ? { ...autoDriver, type: 'excluded', isExcluded: true } : null);
                         } else {
@@ -562,37 +486,18 @@
 
                     const rawDayData = scheduleData[date] || {};
                     const getPrevDate = (d, offset) => {
-                        const dateObj = new Date(d);
-                        dateObj.setDate(dateObj.getDate() - offset);
+                        const dateObj = new Date(d); dateObj.setDate(dateObj.getDate() - offset);
                         return dateObj.toISOString().split('T')[0];
                     };
-                    const d1 = getPrevDate(date, 1);
-                    const d2 = getPrevDate(date, 2);
+                    const d1 = getPrevDate(date, 1); const d2 = getPrevDate(date, 2);
                     const excludedIds = new Set();
-                    if (processedSchedule[d1]) {
-                         processedSchedule[d1].dispatchResult.forEach(r => {
-                             if (r.info.duration >= 2 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id));
-                         });
-                    }
-                    if (processedSchedule[d2]) {
-                         processedSchedule[d2].dispatchResult.forEach(r => {
-                             if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id));
-                         });
-                    }
+                    if (processedSchedule[d1]) processedSchedule[d1].dispatchResult.forEach(r => { if (r.info.duration >= 2 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id)); });
+                    if (processedSchedule[d2]) processedSchedule[d2].dispatchResult.forEach(r => { if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id)); });
 
                     const ondutyStatus = adaptStatus(rawDayData.ondutyStatus, false, n);
                     const driverStatus = adaptStatus(rawDayData.driverStatus, true, n);
 
-                    const computedDayData = { 
-                        ...rawDayData, 
-                        reserved: rawDayData.reserved || {},
-                        overrides: rawDayData.overrides || {},
-                        workLogs: rawDayData.workLogs || {},
-                        dailyMemo: rawDayData.dailyMemo || "",
-                        driverRanks: currentRanks,
-                        ondutyStatus: ondutyStatus,
-                        driverStatus: driverStatus
-                    };
+                    const computedDayData = { ...rawDayData, reserved: rawDayData.reserved || {}, overrides: rawDayData.overrides || {}, workLogs: rawDayData.workLogs || {}, dailyMemo: rawDayData.dailyMemo || "", driverRanks: currentRanks, ondutyStatus: ondutyStatus, driverStatus: driverStatus };
                     const dispatchResult = calculateDispatchLogic(computedDayData, driverNames, vehiclesList, excludedIds);
 
                     let dailyLastDriver = -1;
@@ -601,42 +506,25 @@
                         for (let j = item.slots.length - 1; j >= 0; j--) {
                              const slot = item.slots[j];
                              if (slot) {
-                                 if (slot.consumedAutoDriverId !== undefined) {
-                                     dailyLastDriver = slot.consumedAutoDriverId;
-                                     break;
-                                 } else if (slot.id !== -1) {
-                                     dailyLastDriver = slot.id;
-                                     break;
-                                 }
+                                 if (slot.consumedAutoDriverId !== undefined) { dailyLastDriver = slot.consumedAutoDriverId; break; } 
+                                 else if (slot.id !== -1) { dailyLastDriver = slot.id; break; }
                              }
                         }
                         if (dailyLastDriver !== -1) break;
                     }
 
-                    if (dailyLastDriver !== -1) {
-                        lastDriverId = dailyLastDriver;
-                    }
-
-                    processedSchedule[date] = {
-                        ...computedDayData,
-                        dispatchResult: dispatchResult,
-                        lastDriverId: dailyLastDriver !== -1 ? dailyLastDriver : lastDriverId,
-                        excludedIds: excludedIds
-                    };
+                    if (dailyLastDriver !== -1) lastDriverId = dailyLastDriver;
+                    processedSchedule[date] = { ...computedDayData, dispatchResult: dispatchResult, lastDriverId: dailyLastDriver !== -1 ? dailyLastDriver : lastDriverId, excludedIds: excludedIds };
                 });
                 return processedSchedule;
             }, [scheduleData, driverNames, vehiclesList]);
 
             const getCalculatedDayData = (dateStr) => {
-                if (allScheduleWithRanks[dateStr]) {
-                    return allScheduleWithRanks[dateStr];
-                }
+                if (allScheduleWithRanks[dateStr]) return allScheduleWithRanks[dateStr];
                 const dates = Object.keys(allScheduleWithRanks).sort();
                 const prevDates = dates.filter(d => d < dateStr);
                 let lastDriverId = -1;
-                if (prevDates.length > 0) {
-                    lastDriverId = allScheduleWithRanks[prevDates[prevDates.length - 1]].lastDriverId;
-                }
+                if (prevDates.length > 0) lastDriverId = allScheduleWithRanks[prevDates[prevDates.length - 1]].lastDriverId;
 
                 const n = driverNames.length;
                 let currentRanks = Array.from({length: n}, (_, i) => i + 1);
@@ -644,51 +532,20 @@
                     currentRanks = Array(n).fill(0);
                     let startIdx = (lastDriverId + 1) % n;
                     let currentRank = 1;
-                    for (let k = 0; k < n; k++) {
-                        const targetIdx = (startIdx + k) % n;
-                        currentRanks[targetIdx] = currentRank++;
-                    }
+                    for (let k = 0; k < n; k++) { currentRanks[(startIdx + k) % n] = currentRank++; }
                 }
 
-                const getPrevDate = (d, offset) => {
-                    const dateObj = new Date(d);
-                    dateObj.setDate(dateObj.getDate() - offset);
-                    return dateObj.toISOString().split('T')[0];
-                };
-                const d1 = getPrevDate(dateStr, 1);
-                const d2 = getPrevDate(dateStr, 2);
+                const getPrevDate = (d, offset) => { const dateObj = new Date(d); dateObj.setDate(dateObj.getDate() - offset); return dateObj.toISOString().split('T')[0]; };
+                const d1 = getPrevDate(dateStr, 1); const d2 = getPrevDate(dateStr, 2);
                 const excludedIds = new Set();
-                if (allScheduleWithRanks[d1]) {
-                        allScheduleWithRanks[d1].dispatchResult.forEach(r => {
-                            if (r.info.duration >= 2 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id));
-                        });
-                }
-                if (allScheduleWithRanks[d2]) {
-                        allScheduleWithRanks[d2].dispatchResult.forEach(r => {
-                            if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id));
-                        });
-                }
+                if (allScheduleWithRanks[d1]) allScheduleWithRanks[d1].dispatchResult.forEach(r => { if (r.info.duration >= 2 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id)); });
+                if (allScheduleWithRanks[d2]) allScheduleWithRanks[d2].dispatchResult.forEach(r => { if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id)); });
 
                 const rawDayData = scheduleData[dateStr] || {};
-
-                return {
-                    reserved: rawDayData.reserved || {},
-                    driverStatus: adaptStatus(rawDayData.driverStatus, true, n),
-                    ondutyStatus: adaptStatus(rawDayData.ondutyStatus, false, n),
-                    driverRanks: currentRanks,
-                    overrides: rawDayData.overrides || {},
-                    isHoliday: isPublicHoliday(dateStr),
-                    dailyMemo: rawDayData.dailyMemo || "", 
-                    workLogs: rawDayData.workLogs || {}, 
-                    _excludedIds: excludedIds,
-                    dispatchResult: []
-                };
+                return { reserved: rawDayData.reserved || {}, driverStatus: adaptStatus(rawDayData.driverStatus, true, n), ondutyStatus: adaptStatus(rawDayData.ondutyStatus, false, n), driverRanks: currentRanks, overrides: rawDayData.overrides || {}, isHoliday: isPublicHoliday(dateStr), dailyMemo: rawDayData.dailyMemo || "", workLogs: rawDayData.workLogs || {}, _excludedIds: excludedIds, dispatchResult: [] };
             };
 
-            const currentDayData = useMemo(() => {
-                const data = getCalculatedDayData(selectedDateStr);
-                return { ...data };
-            }, [selectedDateStr, allScheduleWithRanks]);
+            const currentDayData = useMemo(() => { return { ...getCalculatedDayData(selectedDateStr) }; }, [selectedDateStr, allScheduleWithRanks]);
 
             const calculateStatsForRange = (startYear, startMonth, endYear, endMonth) => {
                 const stats = driverNames.map(nm => ({ nm, c1:0, c2:0, c3:0, tA:0, tM:0, typeCounts: {}, totalMoney: 0, totalHours: 0 }));
@@ -711,12 +568,10 @@
                                         if (info.duration === 1) stats[dId].c1++; 
                                         else if (info.duration === 2) stats[dId].c2++; 
                                         else if (info.duration === 3) stats[dId].c3++;
-                                        
                                         stats[dId].tA += t.adjusted;
                                         stats[dId].tM += pay;
                                         stats[dId].totalMoney += pay;
                                         stats[dId].totalHours += t.adjusted;
-                                        
                                         let opType = info.operationType || '공공예약';
                                         if (info.duration === 'grave') opType = '성묘지원';
                                         if (info.duration === 'picnic') opType = '나들이';
@@ -735,25 +590,10 @@
                     const stats = calculateStatsForRange(statsYear, statsMonth, statsYear, statsMonth);
                     const yearlyStats = calculateStatsForRange(statsYear, 0, statsYear, 11);
                     const excelData = stats.filter(s => s.nm).map((s, idx) => {
-                        return { 
-                            '이름': s.nm, 
-                            '당일(회)': s.c1, 
-                            '1박(회)': s.c2, 
-                            '2박(회)': s.c3, 
-                            '공공예약(회)': s.typeCounts['공공예약'] || 0,
-                            '시티투어(회)': s.typeCounts['시티투어'] || 0,
-                            '성묘지원(회)': s.typeCounts['성묘지원'] || 0,
-                            '나들이(회)': s.typeCounts['나들이'] || 0,
-                            '기타(회)': s.typeCounts['기타'] || 0,
-                            '인정 시간(h)': s.tA.toFixed(3), 
-                            '금월 수당(원)': s.tM, 
-                            '금년 예상합계(원)': yearlyStats[idx].totalMoney
-                        };
+                        return { '이름': s.nm, '당일(회)': s.c1, '1박(회)': s.c2, '2박(회)': s.c3, '공공예약(회)': s.typeCounts['공공예약'] || 0, '시티투어(회)': s.typeCounts['시티투어'] || 0, '성묘지원(회)': s.typeCounts['성묘지원'] || 0, '나들이(회)': s.typeCounts['나들이'] || 0, '기타(회)': s.typeCounts['기타'] || 0, '인정 시간(h)': s.tA.toFixed(3), '금월 수당(원)': s.tM, '금년 예상합계(원)': yearlyStats[idx].totalMoney };
                     });
-                    
                     const validStats = stats.filter(s => s.nm);
                     const validYearlyStatsAll = yearlyStats.filter((_, i) => stats[i].nm);
-
                     const totalMonth = validStats.reduce((sum, s) => sum + s.tM, 0);
                     const totalMonthHours = validStats.reduce((sum, s) => sum + s.tA, 0);
                     const totalYear = validYearlyStatsAll.reduce((sum, s) => sum + s.totalMoney, 0);
@@ -766,23 +606,9 @@
                     const totalPicnic = validStats.reduce((sum, s) => sum + (s.typeCounts['나들이'] || 0), 0);
                     const totalEtc = validStats.reduce((sum, s) => sum + (s.typeCounts['기타'] || 0), 0);
 
-                    excelData.push({ 
-                        '이름': '총계', 
-                        '당일(회)': totalC1, 
-                        '1박(회)': totalC2, 
-                        '2박(회)': totalC3, 
-                        '공공예약(회)': totalPub,
-                        '시티투어(회)': totalCity,
-                        '성묘지원(회)': totalGrave,
-                        '나들이(회)': totalPicnic,
-                        '기타(회)': totalEtc,
-                        '인정 시간(h)': totalMonthHours.toFixed(3), 
-                        '금월 수당(원)': totalMonth, 
-                        '금년 예상합계(원)': totalYear 
-                    });
+                    excelData.push({ '이름': '총계', '당일(회)': totalC1, '1박(회)': totalC2, '2박(회)': totalC3, '공공예약(회)': totalPub, '시티투어(회)': totalCity, '성묘지원(회)': totalGrave, '나들이(회)': totalPicnic, '기타(회)': totalEtc, '인정 시간(h)': totalMonthHours.toFixed(3), '금월 수당(원)': totalMonth, '금년 예상합계(원)': totalYear });
                     
-                    const wb = XLSX.utils.book_new();
-                    const ws = XLSX.utils.json_to_sheet(excelData);
+                    const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(excelData);
                     XLSX.utils.book_append_sheet(wb, ws, `${statsYear}년_${statsMonth+1}월_정산`);
                     XLSX.writeFile(wb, `배차정산_${statsYear}년_${statsMonth+1}월.xlsx`);
                 } else {
@@ -790,61 +616,24 @@
                     for(let m=0; m<12; m++) {
                         const mStats = calculateStatsForRange(statsYear, m, statsYear, m);
                         mStats.forEach((d, idx) => {
-                            stats[idx].months[m] = { m: d.tM, h: d.tA };
-                            stats[idx].totalMoney += d.tM;
-                            stats[idx].totalHours += d.tA;
-                            stats[idx].c1 += d.c1;
-                            stats[idx].c2 += d.c2;
-                            stats[idx].c3 += d.c3;
-                            Object.entries(d.typeCounts).forEach(([k, v]) => {
-                                stats[idx].typeCounts[k] = (stats[idx].typeCounts[k] || 0) + v;
-                            });
+                            stats[idx].months[m] = { m: d.tM, h: d.tA }; stats[idx].totalMoney += d.tM; stats[idx].totalHours += d.tA; stats[idx].c1 += d.c1; stats[idx].c2 += d.c2; stats[idx].c3 += d.c3;
+                            Object.entries(d.typeCounts).forEach(([k, v]) => { stats[idx].typeCounts[k] = (stats[idx].typeCounts[k] || 0) + v; });
                         });
                     }
 
-                    let totalC1=0, totalC2=0, totalC3=0, totalPub=0, totalCity=0, totalPicnic=0, totalGrave=0, totalEtc=0;
-                    
                     const excelData = stats.filter(s => s.nm).map(s => {
-                        totalC1 += s.c1; totalC2 += s.c2; totalC3 += s.c3;
-                        totalPub += s.typeCounts['공공예약'] || 0;
-                        totalCity += s.typeCounts['시티투어'] || 0;
-                        totalPicnic += s.typeCounts['나들이'] || 0;
-                        totalGrave += s.typeCounts['성묘지원'] || 0;
-                        totalEtc += s.typeCounts['기타'] || 0;
-
-                        const row = { 
-                            '이름': s.nm,
-                            '당일(회)': s.c1,
-                            '1박(회)': s.c2,
-                            '2박(회)': s.c3,
-                            '공공예약(회)': s.typeCounts['공공예약'] || 0,
-                            '시티투어(회)': s.typeCounts['시티투어'] || 0,
-                            '나들이(회)': s.typeCounts['나들이'] || 0,
-                            '성묘지원(회)': s.typeCounts['성묘지원'] || 0,
-                            '기타(회)': s.typeCounts['기타'] || 0
-                        };
-                        if (yearlyViewType === 'money') {
-                            s.months.forEach((d, idx) => { row[`${idx+1}월`] = d.m; });
-                            row['총 인정시간(h)'] = s.totalHours.toFixed(3); row['총 수당(원)'] = s.totalMoney;
-                        } else {
-                            s.months.forEach((d, idx) => { row[`${idx+1}월`] = d.h.toFixed(3); });
-                            row['총 인정시간(h)'] = s.totalHours.toFixed(3); row['총 수당(원)'] = s.totalMoney;
-                        }
+                        const row = { '이름': s.nm, '당일(회)': s.c1, '1박(회)': s.c2, '2박(회)': s.c3, '공공예약(회)': s.typeCounts['공공예약'] || 0, '시티투어(회)': s.typeCounts['시티투어'] || 0, '나들이(회)': s.typeCounts['나들이'] || 0, '성묘지원(회)': s.typeCounts['성묘지원'] || 0, '기타(회)': s.typeCounts['기타'] || 0 };
+                        if (yearlyViewType === 'money') { s.months.forEach((d, idx) => { row[`${idx+1}월`] = d.m; }); row['총 인정시간(h)'] = s.totalHours.toFixed(3); row['총 수당(원)'] = s.totalMoney; } 
+                        else { s.months.forEach((d, idx) => { row[`${idx+1}월`] = d.h.toFixed(3); }); row['총 인정시간(h)'] = s.totalHours.toFixed(3); row['총 수당(원)'] = s.totalMoney; }
                         return row;
                     });
 
-                    const totalRow = { 
-                        '이름': '연간 합계',
-                        '당일(회)': totalC1,
-                        '1박(회)': totalC2,
-                        '2박(회)': totalC3,
-                        '공공예약(회)': totalPub,
-                        '시티투어(회)': totalCity,
-                        '나들이(회)': totalPicnic,
-                        '성묘지원(회)': totalGrave,
-                        '기타(회)': totalEtc
-                    };
-                    
+                    let totalC1=0, totalC2=0, totalC3=0, totalPub=0, totalCity=0, totalPicnic=0, totalGrave=0, totalEtc=0;
+                    stats.filter(s => s.nm).forEach(s => {
+                        totalC1 += s.c1; totalC2 += s.c2; totalC3 += s.c3; totalPub += s.typeCounts['공공예약'] || 0; totalCity += s.typeCounts['시티투어'] || 0; totalPicnic += s.typeCounts['나들이'] || 0; totalGrave += s.typeCounts['성묘지원'] || 0; totalEtc += s.typeCounts['기타'] || 0;
+                    });
+
+                    const totalRow = { '이름': '연간 합계', '당일(회)': totalC1, '1박(회)': totalC2, '2박(회)': totalC3, '공공예약(회)': totalPub, '시티투어(회)': totalCity, '나들이(회)': totalPicnic, '성묘지원(회)': totalGrave, '기타(회)': totalEtc };
                     let grandTotalMoney = 0; let grandTotalHours = 0;
                     for (let m = 0; m < 12; m++) {
                         const mTotalMoney = stats.filter(s => s.nm).reduce((sum, s) => sum + s.months[m].m, 0);
@@ -872,26 +661,9 @@
             };
 
             const addDriver = async (name) => { if (!name.trim() || driverNames.includes(name.trim())) return; await handleSaveMaster([...driverNames, name.trim()], null); };
-            
-            // Soft Delete (비활성화): 달력에서 보이지 않게 하지만 인덱스는 유지
-            const deactivateDriver = async (idx) => { 
-                const nD = [...driverNames]; 
-                nD[idx] = ""; 
-                await handleSaveMaster(nD, null); 
-            };
-
-            // Hard Delete (영구 삭제): 배열에서 완전히 제거 (순번에 영향을 줌)
-            const removeDriver = async (idx) => { 
-                if (!confirm("경고: 해당 운전자를 완전히 삭제하시겠습니까? (기존 배차 기록의 순번이 변경될 수 있습니다)")) return; 
-                const nD = [...driverNames]; 
-                nD.splice(idx, 1); 
-                await handleSaveMaster(nD, null); 
-            };
-            
-            const updateDriverName = async (idx, name) => { 
-                const nD = [...driverNames]; nD[idx] = name; await handleSaveMaster(nD, null); 
-            };
-            
+            const deactivateDriver = async (idx) => { const nD = [...driverNames]; nD[idx] = ""; await handleSaveMaster(nD, null); };
+            const removeDriver = async (idx) => { if (!confirm("경고: 해당 운전자를 완전히 삭제하시겠습니까? (기존 배차 기록의 순번이 변경될 수 있습니다)")) return; const nD = [...driverNames]; nD.splice(idx, 1); await handleSaveMaster(nD, null); };
+            const updateDriverName = async (idx, name) => { const nD = [...driverNames]; nD[idx] = name; await handleSaveMaster(nD, null); };
             const addVehicle = async (name, plate, type) => { await handleSaveMaster(null, [...vehiclesList, { id: 'V_' + Date.now(), name, plate, type, capacity: type === 'BUS' ? 2 : 1 }]); };
             const removeVehicle = async (id) => { if (confirm("삭제하시겠습니까?")) await handleSaveMaster(null, vehiclesList.filter(v => v.id !== id)); };
             const updateVehiclePlate = async (id, newPlate) => { await handleSaveMaster(null, vehiclesList.map(v => v.id === id ? { ...v, plate: newPlate } : v)); };
@@ -904,19 +676,20 @@
             };
 
             const toggleOndutyStatus = (idx) => { 
-                const n = { 
-                    ...currentDayData, 
-                    ondutyStatus: [...currentDayData.ondutyStatus]
-                }; 
+                const n = { ...currentDayData, ondutyStatus: [...currentDayData.ondutyStatus] }; 
                 n.ondutyStatus[idx] = !n.ondutyStatus[idx]; 
                 handleSaveDay(n); 
             };
             
-            const updateDriverRank = (idx, val) => { 
-                const n = { ...currentDayData, driverRanks: [...currentDayData.driverRanks] }; 
-                n.driverRanks[idx] = parseInt(val) || 0; handleSaveDay(n); 
-            };
+            const updateDriverRank = (idx, val) => { const n = { ...currentDayData, driverRanks: [...currentDayData.driverRanks] }; n.driverRanks[idx] = parseInt(val) || 0; handleSaveDay(n); };
             
+            const sortDriversByRank = async () => {
+                const ids = driverNames.map((_, i) => i).sort((a, b) => currentDayData.driverRanks[a] - currentDayData.driverRanks[b]);
+                const newDriverNames = ids.map(i => driverNames[i]);
+                await handleSaveMaster(newDriverNames, null);
+                setModal({ type: null });
+            };
+
             const toggleVehicleReservation = (vId) => {
                 const n = { ...currentDayData, reserved: { ...(currentDayData.reserved || {}) }, overrides: { ...(currentDayData.overrides || {}) } };
                 if (n.reserved[vId]) {
@@ -925,34 +698,24 @@
                     Object.keys(nO).forEach(k => { if (k.startsWith(vId)) delete nO[k]; });
                     n.overrides = nO;
                 } else {
-                    n.reserved[vId] = { 
-                        km: 0, duration: 1, destination: '', 
-                        dailyTimes: [{ startTime: '09:00', endTime: '18:00', isHolidayWork: false }],
-                        startTime: '09:00', endTime: '18:00', isHolidayWork: false, // 하위 호환성 유지
-                        custName: '', custPhone: '', memo: '', operationType: '공공예약', customPay: 0, isCancelled: false, isUnavailable: false 
-                    };
+                    n.reserved[vId] = { km: 0, duration: 1, destination: '', dailyTimes: [{ startTime: '09:00', endTime: '18:00', isHolidayWork: false }], startTime: '09:00', endTime: '18:00', isHolidayWork: false, custName: '', custPhone: '', memo: '', operationType: '공공예약', customPay: 0, isCancelled: false, isUnavailable: false, isSingleDriver: false };
                 }
                 handleSaveDay(n);
             };
+
             const updateVehicleInfo = (vId, field, value) => { const n = { ...currentDayData, reserved: { ...(currentDayData.reserved || {}) } }; 
                 if (n.reserved[vId]) { 
                     if (field === 'duration') {
                         const numDuration = (['seoul', 'etc', 'grave', 'picnic'].includes(value)) ? 1 : parseInt(value);
                         let newDailyTimes = [...(n.reserved[vId].dailyTimes || [{startTime: n.reserved[vId].startTime || '09:00', endTime: n.reserved[vId].endTime || '18:00', isHolidayWork: n.reserved[vId].isHolidayWork || false}])];
-                        if (numDuration > newDailyTimes.length) {
-                            for (let i = newDailyTimes.length; i < numDuration; i++) {
-                                newDailyTimes.push({startTime: '09:00', endTime: '18:00', isHolidayWork: false});
-                            }
-                        } else if (numDuration < newDailyTimes.length && numDuration > 0) {
-                            newDailyTimes = newDailyTimes.slice(0, numDuration);
-                        }
+                        if (numDuration > newDailyTimes.length) { for (let i = newDailyTimes.length; i < numDuration; i++) { newDailyTimes.push({startTime: '09:00', endTime: '18:00', isHolidayWork: false}); } } 
+                        else if (numDuration < newDailyTimes.length && numDuration > 0) { newDailyTimes = newDailyTimes.slice(0, numDuration); }
                         n.reserved[vId] = { ...n.reserved[vId], duration: value, dailyTimes: newDailyTimes };
-                    } else {
-                        n.reserved[vId] = { ...n.reserved[vId], [field]: value }; 
-                    }
+                    } else { n.reserved[vId] = { ...n.reserved[vId], [field]: value }; }
                     handleSaveDay(n); 
                 } 
             };
+
             const updateDailyTime = (vId, dayIndex, field, value) => {
                 const n = { ...currentDayData, reserved: { ...(currentDayData.reserved || {}) } };
                 if (n.reserved[vId]) {
@@ -960,9 +723,7 @@
                     const newDailyTimes = [...(info.dailyTimes || [{startTime: info.startTime || '09:00', endTime: info.endTime || '18:00', isHolidayWork: info.isHolidayWork || false}])];
                     newDailyTimes[dayIndex] = { ...newDailyTimes[dayIndex], [field]: value };
                     n.reserved[vId] = { ...info, dailyTimes: newDailyTimes };
-                    if (dayIndex === 0) {
-                        n.reserved[vId][field] = value;
-                    }
+                    if (dayIndex === 0) n.reserved[vId][field] = value;
                     handleSaveDay(n);
                 }
             };
@@ -995,9 +756,7 @@
                 const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
                 const dateTextSize = isExpanded ? "text-2xl font-extrabold" : "text-xs font-bold";
                 const holidayTextSize = isExpanded ? "text-sm" : "text-[10px]";
-                const groupTextSize = isExpanded 
-                    ? "text-base font-extrabold p-1.5 leading-tight" 
-                    : "text-[11px] font-extrabold px-1 py-0.5 leading-tight"; 
+                const groupTextSize = isExpanded ? "text-base font-extrabold p-1.5 leading-tight" : "text-[11px] font-extrabold px-1 py-0.5 leading-tight"; 
                 const offTextSize = isExpanded ? "text-xs" : "text-[8px]";
 
                 return (
@@ -1035,37 +794,21 @@
 
                                             if (duration > k) {
                                                 let colorClass = "bg-slate-50 text-slate-800";
-                                                
-                                                if (item.info.isCancelled) { 
-                                                    colorClass = "bg-gray-200 text-gray-500 border border-gray-300 line-through opacity-70"; 
-                                                } else if (duration === 2) { 
-                                                    colorClass = "bg-yellow-100 text-yellow-800 font-bold border border-yellow-200"; 
-                                                } else if (duration >= 3) { 
-                                                    colorClass = "bg-orange-100 text-orange-800 font-bold border border-orange-200"; 
-                                                } else { 
+                                                if (item.info.isCancelled) colorClass = "bg-gray-200 text-gray-500 border border-gray-300 line-through opacity-70"; 
+                                                else if (duration === 2) colorClass = "bg-yellow-100 text-yellow-800 font-bold border border-yellow-200"; 
+                                                else if (duration >= 3) colorClass = "bg-orange-100 text-orange-800 font-bold border border-orange-200"; 
+                                                else { 
                                                     if (item.info.operationType === '공공예약' || rawDuration === 'grave' || rawDuration === 'picnic') colorClass = "bg-indigo-100 text-indigo-900 font-extrabold border border-indigo-200"; 
                                                     else if (item.info.operationType === '시티투어') colorClass = "bg-blue-50 text-blue-700 font-bold border border-blue-100"; 
                                                 }
                                                 
                                                 if (!vehicleGroups[item.vehicle.id]) {
-                                                    vehicleGroups[item.vehicle.id] = { 
-                                                        name: item.vehicle.name, 
-                                                        drivers: [], 
-                                                        color: colorClass, 
-                                                        isUnavailable: item.info.isUnavailable,
-                                                        isCancelled: item.info.isCancelled,
-                                                        duration: duration,
-                                                        rawDuration: rawDuration,
-                                                        operationType: item.info.operationType 
-                                                    };
+                                                    vehicleGroups[item.vehicle.id] = { name: item.vehicle.name, drivers: [], color: colorClass, isUnavailable: item.info.isUnavailable, isCancelled: item.info.isCancelled, duration: duration, rawDuration: rawDuration, operationType: item.info.operationType };
                                                 }
-                                                
                                                 item.slots.forEach(slot => {
                                                     if(slot && !slot.isExcluded && slot.nm) {
                                                         vehicleGroups[item.vehicle.id].drivers.push({nm: slot.nm, rank: slot.rank});
-                                                        if (!item.info.isCancelled) {
-                                                            workingDriverIds.add(slot.id); 
-                                                        }
+                                                        if (!item.info.isCancelled) workingDriverIds.add(slot.id); 
                                                     }
                                                 });
                                             }
@@ -1075,13 +818,13 @@
                                     let ondutyDriversStr = "";
                                     if (dayData && dayData.ondutyStatus && driverNames.length > 0) {
                                         const ondutys = driverNames.filter((nm, idx) => nm && dayData.ondutyStatus[idx]);
-                                        if (ondutys.length > 0) { ondutyDriversStr = ondutys.join(', '); }
+                                        if (ondutys.length > 0) ondutyDriversStr = ondutys.join(', ');
                                     }
 
                                     let offDriversStr = "";
                                     if (dayData && dayData.driverStatus && driverNames.length > 0) {
                                         const offs = driverNames.filter((nm, idx) => nm && !dayData.driverStatus[idx] && !workingDriverIds.has(idx));
-                                        if (offs.length > 0) { offDriversStr = offs.join(', '); }
+                                        if (offs.length > 0) offDriversStr = offs.join(', ');
                                     }
                                     
                                     return (
@@ -1092,53 +835,19 @@
                                                 </span>
                                             </div>
                                             {dayData.dailyMemo && (
-                                                <div className="w-full mt-0.5 p-1 bg-rose-50 border border-rose-200 rounded text-rose-600 text-[10px] font-bold leading-tight shadow-sm break-keep whitespace-normal">
-                                                    🔔 {dayData.dailyMemo}
-                                                </div>
+                                                <div className="w-full mt-0.5 p-1 bg-rose-50 border border-rose-200 rounded text-rose-600 text-[10px] font-bold leading-tight shadow-sm break-keep whitespace-normal">🔔 {dayData.dailyMemo}</div>
                                             )}
                                             <div className="w-full space-y-1 overflow-hidden mt-1">
                                                 {Object.values(vehicleGroups).map((group, gIdx) => (
                                                     <div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color} shadow-sm`}>
-                                                        {group.isCancelled && (
-                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-gray-500 rounded">
-                                                                취소
-                                                            </span>
-                                                        )}
-                                                        {group.rawDuration === 'etc' && !group.isCancelled && (
-                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-purple-500 rounded">
-                                                                기타
-                                                            </span>
-                                                        )}
-                                                        {group.duration > 1 && !group.isCancelled && (
-                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-red-500 rounded">
-                                                                {group.duration - 1}박
-                                                            </span>
-                                                        )}
-                                                        {(group.operationType === '공공예약' && !['grave', 'picnic', 'etc', 'seoul'].includes(group.rawDuration)) && !group.isCancelled && (
-                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-indigo-500 rounded">
-                                                                공공
-                                                            </span>
-                                                        )}
-                                                        {(group.operationType === '성묘지원' || group.rawDuration === 'grave') && !group.isCancelled && (
-                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-blue-500 rounded">
-                                                                성묘
-                                                            </span>
-                                                        )}
-                                                        {(group.operationType === '나들이' || group.rawDuration === 'picnic') && !group.isCancelled && (
-                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-emerald-500 rounded">
-                                                                나들이
-                                                            </span>
-                                                        )}
-                                                        {group.operationType === '시티투어' && !group.isCancelled && (
-                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-blue-500 rounded">
-                                                                시티
-                                                            </span>
-                                                        )}
-                                                        {group.isUnavailable && !group.isCancelled && (
-                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-purple-500 rounded">
-                                                                운전원변경
-                                                            </span>
-                                                        )}
+                                                        {group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-gray-500 rounded">취소</span>}
+                                                        {group.rawDuration === 'etc' && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-purple-500 rounded">기타</span>}
+                                                        {group.duration > 1 && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-red-500 rounded">{group.duration - 1}박</span>}
+                                                        {(group.operationType === '공공예약' && !['grave', 'picnic', 'etc', 'seoul'].includes(group.rawDuration)) && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-indigo-500 rounded">공공</span>}
+                                                        {(group.operationType === '성묘지원' || group.rawDuration === 'grave') && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-blue-500 rounded">성묘</span>}
+                                                        {(group.operationType === '나들이' || group.rawDuration === 'picnic') && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-emerald-500 rounded">나들이</span>}
+                                                        {group.operationType === '시티투어' && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-blue-500 rounded">시티</span>}
+                                                        {group.isUnavailable && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-purple-500 rounded">운전원변경</span>}
                                                         {group.isCancelled ? `${group.name} (취소됨)` : `${group.name}: ${group.drivers.map(d => d.nm).join(', ')}`}
                                                     </div>
                                                 ))}
@@ -1184,7 +893,6 @@
 
             return (
                 <div className="font-sans text-slate-800 bg-slate-50 min-h-screen pb-10">
-                    {/* ... (생략: 모달 및 헤더 등) ... */}
                     {isCalendarExpanded && (
                         <div className="fixed inset-0 z-[100] bg-white flex flex-col h-screen w-screen">
                             <div className="p-6 border-b shadow-sm bg-white flex justify-between items-center shrink-0">
@@ -1219,10 +927,7 @@
                         </div>
                     </header>
 
-                    {/* MAIN LAYOUT CONTAINER */}
                     <div className="p-4 md:p-6 flex flex-col lg:flex-row gap-6 relative">
-                        
-                        {/* LEFT SIDE: 달력 & 최종 배차 결과 & 일일 운전자 상태 */}
                         <div className="flex-shrink-0 space-y-6" style={{ width: isDesktop ? leftPanelWidth : '100%' }}>
                             <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
                                 <div className="flex justify-between items-center mb-4 font-bold">
@@ -1236,7 +941,6 @@
                                 {renderCalendarContent(false)}
                             </div>
                             
-                            {/* 최종 배차 결과 복원 영역 */}
                             <div className="bg-white rounded-3xl shadow-sm p-6 text-slate-900 min-h-[400px] border border-slate-200 font-bold">
                                 <div className="flex justify-between items-center mb-6">
                                     <h2 className="text-lg font-extrabold flex items-center gap-2 text-slate-800"><Icons.Receipt className="text-emerald-600 w-5 h-5"/> 최종 배차 결과</h2>
@@ -1255,14 +959,9 @@
                                             onClick={async () => {
                                                 if(confirm('알림을 삭제하시겠습니까?')) {
                                                     try {
-                                                        await db.doc(`artifacts/${APP_ID}/public/data/calendar/${selectedDateStr}`).set({
-                                                            dailyMemo: firebase.firestore.FieldValue.delete()
-                                                        }, { merge: true });
+                                                        await db.doc(`artifacts/${APP_ID}/public/data/calendar/${selectedDateStr}`).set({ dailyMemo: firebase.firestore.FieldValue.delete() }, { merge: true });
                                                     } catch (error) {
-                                                        console.error("알림 삭제 중 오류:", error);
-                                                        const n = { ...currentDayData };
-                                                        delete n.dailyMemo;
-                                                        handleSaveDay(n);
+                                                        const n = { ...currentDayData }; delete n.dailyMemo; handleSaveDay(n);
                                                     }
                                                 }
                                             }} 
@@ -1278,7 +977,6 @@
                                     {getDispatchResult().map((item, idx) => {
                                         const t = calculateTotalWorkHours(item.info, selectedDateStr);
                                         const pay = calculatePay(item.info);
-                                        
                                         const times = item.info.dailyTimes || [{startTime: item.info.startTime, endTime: item.info.endTime}];
                                         const timesInfo = times.map((dt, dIdx) => `${times.length > 1 ? `${dIdx+1}일차 ` : ''}${dt.startTime}~${dt.endTime}`).join(' / ');
 
@@ -1337,15 +1035,9 @@
                                             <Icons.UserX className="w-3 h-3"/> <span>당직 / 휴무 / 연박 인원</span>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
-                                            {currentOndutyDrivers.map((nm, i) => (
-                                                <span key={`onduty-${i}`} className="px-2.5 py-1 rounded-md bg-orange-100 border border-orange-200 text-orange-700 text-xs font-bold">당직: {nm}</span>
-                                            ))}
-                                            {realCurrentOffDrivers.map((nm, i) => (
-                                                <span key={`off-${i}`} className="px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold">휴무: {nm}</span>
-                                            ))}
-                                            {excludedDriversList.map((nm, i) => (
-                                                <span key={`excl-${i}`} className="px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-rose-600 text-xs font-bold">연박: {nm}</span>
-                                            ))}
+                                            {currentOndutyDrivers.map((nm, i) => (<span key={`onduty-${i}`} className="px-2.5 py-1 rounded-md bg-orange-100 border border-orange-200 text-orange-700 text-xs font-bold">당직: {nm}</span>))}
+                                            {realCurrentOffDrivers.map((nm, i) => (<span key={`off-${i}`} className="px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold">휴무: {nm}</span>))}
+                                            {excludedDriversList.map((nm, i) => (<span key={`excl-${i}`} className="px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-rose-600 text-xs font-bold">연박: {nm}</span>))}
                                             {currentOndutyDrivers.length === 0 && realCurrentOffDrivers.length === 0 && excludedDriversList.length === 0 && <span className="text-slate-400 text-xs pl-1">해당 인원 없음</span>}
                                         </div>
                                     </div>
@@ -1397,13 +1089,9 @@
                             </div>
                         </div>
 
-                        {/* RESIZER */}
                         <div className="hidden lg:block w-2 bg-slate-200 hover:bg-blue-400 cursor-col-resize rounded-full transition-colors self-stretch flex-shrink-0 z-10" onMouseDown={handleMouseDown}></div>
 
-                        {/* RIGHT SIDE: 배차 예약 입력 */}
                         <div className="flex-1 min-w-0 space-y-6">
-                            
-                            {/* 배차 예약 정보 입력 창 */}
                             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 min-h-[600px]">
                                 <div className="flex justify-between items-center mb-6 border-b pb-4 font-bold">
                                     <div className="flex flex-col font-bold">
@@ -1456,6 +1144,12 @@
                                                                 <input type="checkbox" checked={info.isUnavailable || false} onChange={(e) => updateVehicleInfo(v.id, 'isUnavailable', e.target.checked)} className="w-4 h-4 text-purple-500 rounded"/>
                                                                 <span className="text-xs text-purple-600 font-bold">운전원변경</span>
                                                             </label>
+                                                            {v.capacity > 1 && (
+                                                                <label className="flex items-center gap-2">
+                                                                    <input type="checkbox" checked={info.isSingleDriver || false} onChange={(e) => updateVehicleInfo(v.id, 'isSingleDriver', e.target.checked)} className="w-4 h-4 text-blue-500 rounded"/>
+                                                                    <span className="text-xs text-blue-600 font-bold">1인 배정</span>
+                                                                </label>
+                                                            )}
                                                         </div>
 
                                                         <div className="grid grid-cols-2 gap-2">
@@ -1722,6 +1416,9 @@
                                         <input type="text" id="newDriverName" placeholder="새 운전자 이름" className="w-full text-xs border rounded p-2 outline-none focus:ring-2 focus:ring-orange-400 font-bold" onKeyDown={(e) => { if(e.key==='Enter') { addDriver(e.target.value); e.target.value=''; }}}/>
                                         <button onClick={() => { const el = document.getElementById('newDriverName'); addDriver(el.value); el.value=''; }} className="bg-slate-800 text-white w-12 rounded text-xs shrink-0 font-bold">등록</button>
                                     </div>
+                                    <button onClick={sortDriversByRank} className="w-full bg-blue-50 text-blue-600 text-xs font-bold py-2 rounded-lg hover:bg-blue-100 transition-colors border border-blue-100 shadow-sm">
+                                        현재 일일 순번대로 목록 정렬
+                                    </button>
                                 </div>
                                 <div className="p-4 overflow-y-auto flex-grow bg-slate-50 space-y-2">
                                     {driverNames.map((nm, i) => {
