@@ -547,12 +547,14 @@
 
             const currentDayData = useMemo(() => { return { ...getCalculatedDayData(selectedDateStr) }; }, [selectedDateStr, allScheduleWithRanks]);
 
-            const calculateStatsForRange = (startYear, startMonth, endYear, endMonth) => {
+            const calculateStatsForRange = (startYear, startMonth, endYear, endMonth, limitToToday = false) => {
+                const todayStr = getTodayStr();
                 const stats = driverNames.map(nm => ({ nm, c1:0, c2:0, c3:0, tA:0, tM:0, typeCounts: {}, totalMoney: 0, totalHours: 0 }));
                 for(let m = startMonth; m <= endMonth; m++) {
                     const lastD = new Date(startYear, m + 1, 0).getDate();
                     for(let d = 1; d <= lastD; d++) {
                         const dStr = `${startYear}-${String(m + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                        if (limitToToday && dStr > todayStr) continue; // 미래 날짜 제외 처리
                         const dayData = getCalculatedDayData(dStr);
                         const dispatch = dayData.dispatchResult || [];
                         dispatch.forEach(item => {
@@ -568,10 +570,12 @@
                                         if (info.duration === 1) stats[dId].c1++; 
                                         else if (info.duration === 2) stats[dId].c2++; 
                                         else if (info.duration === 3) stats[dId].c3++;
+                                        
                                         stats[dId].tA += t.adjusted;
                                         stats[dId].tM += pay;
                                         stats[dId].totalMoney += pay;
                                         stats[dId].totalHours += t.adjusted;
+                                        
                                         let opType = info.operationType || '공공예약';
                                         if (info.duration === 'grave') opType = '성묘지원';
                                         if (info.duration === 'picnic') opType = '나들이';
@@ -587,8 +591,8 @@
 
             const handleDownloadExcel = () => {
                 if (statsMode === 'monthly') {
-                    const stats = calculateStatsForRange(statsYear, statsMonth, statsYear, statsMonth);
-                    const yearlyStats = calculateStatsForRange(statsYear, 0, statsYear, 11);
+                    const stats = calculateStatsForRange(statsYear, statsMonth, statsYear, statsMonth, true);
+                    const yearlyStats = calculateStatsForRange(statsYear, 0, statsYear, 11, false);
                     const excelData = stats.filter(s => s.nm).map((s, idx) => {
                         return { '이름': s.nm, '당일(회)': s.c1, '1박(회)': s.c2, '2박(회)': s.c3, '공공예약(회)': s.typeCounts['공공예약'] || 0, '시티투어(회)': s.typeCounts['시티투어'] || 0, '성묘지원(회)': s.typeCounts['성묘지원'] || 0, '나들이(회)': s.typeCounts['나들이'] || 0, '기타(회)': s.typeCounts['기타'] || 0, '인정 시간(h)': s.tA.toFixed(3), '금월 수당(원)': s.tM, '금년 예상합계(원)': yearlyStats[idx].totalMoney };
                     });
@@ -614,7 +618,7 @@
                 } else {
                     const stats = driverNames.map(nm => ({ nm, months: Array(12).fill({m:0, h:0}), totalMoney: 0, totalHours: 0, c1:0, c2:0, c3:0, typeCounts:{} }));
                     for(let m=0; m<12; m++) {
-                        const mStats = calculateStatsForRange(statsYear, m, statsYear, m);
+                        const mStats = calculateStatsForRange(statsYear, m, statsYear, m, true);
                         mStats.forEach((d, idx) => {
                             stats[idx].months[m] = { m: d.tM, h: d.tA }; stats[idx].totalMoney += d.tM; stats[idx].totalHours += d.tA; stats[idx].c1 += d.c1; stats[idx].c2 += d.c2; stats[idx].c3 += d.c3;
                             Object.entries(d.typeCounts).forEach(([k, v]) => { stats[idx].typeCounts[k] = (stats[idx].typeCounts[k] || 0) + v; });
@@ -917,11 +921,7 @@
                         </div>
                         <div className="flex gap-2">
                             <button onClick={() => setModal({ type: 'notification' })} className="bg-rose-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-rose-600 transition flex items-center gap-1"><Icons.Bell className="w-3 h-3"/>알림</button>
-                            <button onClick={() => { setModalDate(selectedDateStr); setModal({ type: 'workLog' }); }} className="bg-sky-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-sky-600 transition flex items-center gap-1"><Icons.ClipboardList className="w-3 h-3"/>업무일지</button>
-                            <button onClick={() => setModal({ type: 'paySettings' })} className="bg-yellow-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-yellow-600 transition flex items-center gap-1"><Icons.Money className="w-3 h-3"/>관외비</button>
-                            <button onClick={() => setModal({ type: 'drivers' })} className="bg-orange-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-orange-600 transition flex items-center gap-1"><Icons.Users className="w-3 h-3"/>운전자 관리</button>
-                            <button onClick={() => setModal({ type: 'vehicles' })} className="bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-indigo-600 transition flex items-center gap-1"><Icons.Bus className="w-3 h-3"/>차량 관리</button>
-                            <button onClick={() => setModal({ type: 'data' })} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-slate-200 transition flex items-center gap-1"><Icons.Database className="w-3 h-3"/>데이터 관리</button>
+                            <button onClick={() => { setModalDate(selectedDateStr); setModal({ type: 'workLog' }); }} className="bg-sky-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-sky-600 transition flex items-center gap-1"><Icons.ClipboardList className="w-3 h-3"/>업무</button>
                             <button onClick={() => { setStatsYear(viewDate.getFullYear()); setStatsMonth(viewDate.getMonth()); setModal({ type: 'stats' }); }} className="bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-emerald-600 transition flex items-center gap-1"><Icons.PieChart className="w-3 h-3"/>정산</button>
                             <button onClick={resetAll} className="bg-slate-100 text-slate-500 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-red-50 hover:text-red-500 transition"><Icons.RotateCw className="w-3 h-3"/></button>
                         </div>
@@ -1086,6 +1086,21 @@
                                     })}
                                     {driverNames.filter(n => n).length === 0 && <div className="text-center text-slate-400 text-xs py-10">등록된 운전자가 없습니다.</div>}
                                 </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <button onClick={() => setModal({ type: 'drivers' })} className="bg-white border border-orange-200 text-orange-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-orange-50 transition flex items-center justify-center gap-2">
+                                    <Icons.Users className="w-4 h-4"/> 인원 관리
+                                </button>
+                                <button onClick={() => setModal({ type: 'vehicles' })} className="bg-white border border-indigo-200 text-indigo-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-indigo-50 transition flex items-center justify-center gap-2">
+                                    <Icons.Bus className="w-4 h-4"/> 차량 관리
+                                </button>
+                                <button onClick={() => setModal({ type: 'paySettings' })} className="bg-white border border-yellow-300 text-yellow-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-yellow-50 transition flex items-center justify-center gap-2">
+                                    <Icons.Money className="w-4 h-4"/> 관외비 설정
+                                </button>
+                                <button onClick={() => setModal({ type: 'data' })} className="bg-white border border-slate-200 text-slate-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                                    <Icons.Database className="w-4 h-4"/> 데이터 백업
+                                </button>
                             </div>
                         </div>
 
@@ -1613,14 +1628,14 @@
                                                         <th className="text-center pb-2">성묘</th>
                                                         <th className="text-center pb-2">기타</th>
                                                         <th className="text-right pb-2 border-l border-slate-200">인정(h)</th>
-                                                        <th className="text-right pb-2">금월 수당</th>
+                                                        <th className="text-right pb-2">금월 누적수당</th>
                                                         <th className="text-right pb-2 pr-4 bg-blue-50 text-blue-700">금년 예상합계</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {(() => {
-                                                        const stats = calculateStatsForRange(statsYear, statsMonth, statsYear, statsMonth);
-                                                        const yearlyStatsAll = calculateStatsForRange(statsYear, 0, statsYear, 11);
+                                                        const stats = calculateStatsForRange(statsYear, statsMonth, statsYear, statsMonth, true);
+                                                        const yearlyStatsAll = calculateStatsForRange(statsYear, 0, statsYear, 11, false);
                                                         
                                                         const validStats = stats.filter(s => s.nm);
                                                         const validYearlyStatsAll = yearlyStatsAll.filter((_, i) => stats[i].nm);
@@ -1693,7 +1708,7 @@
                                                         <th className="text-center px-2">나들이</th>
                                                         <th className="text-center px-2">성묘</th>
                                                         <th className="text-center px-2">기타</th>
-                                                        {Array.from({length: 12}).map((_, m) => (<th key={m} className={`text-right px-2 min-w-[60px] ${m===0 ? 'border-l border-slate-200' : ''}`}>{m+1}월</th>))}
+                                                        {Array.from({length: 12}).map((_, m) => (<th key={m} className={`text-right px-2 min-w-[60px] ${m===0 ? 'border-l border-slate-200' : ''}`}>{m+1}월 누적</th>))}
                                                         <th className="text-right pr-4 bg-blue-50 text-blue-700 z-10 sticky right-0 border-l border-slate-200">합계</th>
                                                     </tr>
                                                 </thead>
@@ -1701,7 +1716,7 @@
                                                     {(() => {
                                                         const stats = driverNames.map(nm => ({ nm, months: Array(12).fill({m:0, h:0}), totalMoney:0, totalHours:0, c1:0, c2:0, c3:0, typeCounts:{} }));
                                                         for(let m=0; m<12; m++) {
-                                                            const mStats = calculateStatsForRange(statsYear, m, statsYear, m);
+                                                            const mStats = calculateStatsForRange(statsYear, m, statsYear, m, true);
                                                             mStats.forEach((d, idx) => {
                                                                 stats[idx].months[m] = { m: d.tM, h: d.tA };
                                                                 stats[idx].totalMoney += d.tM;
