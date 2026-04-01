@@ -68,7 +68,7 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-        // --- 아이콘 매핑 (문법 오류 수정됨) ---
+        // --- 아이콘 매핑 ---
         const Icons = {
             Cloud: ({className}) => <i className={`fa-solid fa-cloud ${className}`} />,
             AccessibleBus: ({className}) => (
@@ -308,7 +308,9 @@
             const [statsMonth, setStatsMonth] = useState(new Date().getMonth());
             const [yearlyViewType, setYearlyViewType] = useState('money'); 
 
-            const [leftPanelWidth, setLeftPanelWidth] = useState(() => window.innerWidth >= 1024 ? window.innerWidth * 0.65 : 380);
+            const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
+                return window.innerWidth >= 1024 ? window.innerWidth * 0.65 : 380;
+            });
             const isDragging = useRef(false);
             const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
 
@@ -317,8 +319,6 @@
                 const type = info.operationType || '공공예약';
                 const duration = info.duration;
                 if (duration === 'seoul' || duration === 'etc') return 0;
-                if (duration === 'grave') return paySettings.grave || 0;
-                if (duration === 'picnic') return paySettings.picnic || 0;
                 if (type === '성묘지원') return paySettings.grave || 0;
                 if (type === '나들이') return paySettings.picnic || 0;
                 if (type !== '공공예약') return 0;
@@ -371,14 +371,10 @@
             }, [user]);
 
             const moveMonth = (offset) => { const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + offset, 1); setViewDate(newDate); };
-
             const changeStatsMonth = (offset) => {
-                let newMonth = statsMonth + offset;
-                let newYear = statsYear;
-                if (newMonth > 11) { newMonth = 0; newYear++; }
-                else if (newMonth < 0) { newMonth = 11; newYear--; }
-                setStatsMonth(newMonth);
-                setStatsYear(newYear);
+                let newMonth = statsMonth + offset; let newYear = statsYear;
+                if (newMonth > 11) { newMonth = 0; newYear++; } else if (newMonth < 0) { newMonth = 11; newYear--; }
+                setStatsMonth(newMonth); setStatsYear(newYear);
             };
 
             const handleBackup = () => {
@@ -415,14 +411,18 @@
                 if (!dayData) return [];
                 const currentRanks = dayData.driverRanks && dayData.driverRanks.length === drivers.length ? dayData.driverRanks : drivers.map((_, i) => i + 1);
                 
-                let pool = drivers.map((nm, i) => ({ nm, id: i, active: nm && (dayData.driverStatus ? dayData.driverStatus[i] : true), rank: currentRanks[i] })).filter(d => d.active && !excludedDriverIds.has(d.id)).sort((a, b) => a.rank - b.rank);
+                let pool = drivers.map((nm, i) => ({ nm, id: i, active: dayData.driverStatus ? dayData.driverStatus[i] : true, rank: currentRanks[i] })).filter(d => d.active && !excludedDriverIds.has(d.id)).sort((a, b) => a.rank - b.rank);
                 
-                const reservedData = dayData.reserved || {};
-                const resIds = Object.keys(reservedData);
+                const resIds = Object.keys(dayData.reserved || {});
                 const sortedV = vehicles.filter(v => resIds.includes(v.id)).sort((a, b) => {
-                    const infoA = reservedData[a.id]; const infoB = reservedData[b.id];
+                    const infoA = dayData.reserved[a.id]; const infoB = dayData.reserved[b.id];
                     if (a.type !== b.type) return a.type === 'BUS' ? -1 : 1;
-                    if (infoA.duration !== infoB.duration) return infoA.duration - infoB.duration;
+                    
+                    // 1박(2) 또는 2박(3)이 아니면 모두 당일(1)로 간주하여 정렬
+                    const durationA = (infoA.duration === 2 || infoA.duration === 3) ? infoA.duration : 1;
+                    const durationB = (infoB.duration === 2 || infoB.duration === 3) ? infoB.duration : 1;
+                    if (durationA !== durationB) return durationA - durationB;
+                    
                     if ((infoA.km || 0) !== (infoB.km || 0)) return (infoA.km || 0) - (infoB.km || 0);
                     if (a.type === 'BUS') {
                         const getBusRank = (name) => { if (name.includes('3호')) return 1; if (name.includes('1호')) return 2; if (name.includes('2호')) return 3; return 4; };
@@ -436,7 +436,7 @@
                 Object.entries(dayData.overrides || {}).forEach(([key, dId]) => { manualAssignments[key] = dId; pool = pool.filter(p => p.id !== dId); });
 
                 sortedV.forEach(v => {
-                    const info = dayData.reserved[v.id] || {};
+                    const info = dayData.reserved[v.id];
                     const slots = [];
                     const effectiveCapacity = info.isSingleDriver ? 1 : v.capacity;
                     for(let i=0; i<effectiveCapacity; i++) {
@@ -494,10 +494,10 @@
                     if (processedSchedule[d1]) processedSchedule[d1].dispatchResult.forEach(r => { if (r.info.duration >= 2 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id)); });
                     if (processedSchedule[d2]) processedSchedule[d2].dispatchResult.forEach(r => { if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id)); });
 
-                    const ondutyStatus = adaptStatus(rawDayData.ondutyStatus, false, n);
-                    const driverStatus = adaptStatus(rawDayData.driverStatus, true, n);
+                    const ondutyStatus = rawDayData.ondutyStatus && rawDayData.ondutyStatus.length === n ? rawDayData.ondutyStatus : Array(n).fill(false);
+                    const driverStatus = rawDayData.driverStatus && rawDayData.driverStatus.length === n ? rawDayData.driverStatus : Array(n).fill(true);
 
-                    const computedDayData = { ...rawDayData, reserved: rawDayData.reserved || {}, overrides: rawDayData.overrides || {}, workLogs: rawDayData.workLogs || {}, dailyMemo: rawDayData.dailyMemo || "", driverRanks: currentRanks, ondutyStatus: ondutyStatus, driverStatus: driverStatus };
+                    const computedDayData = { ...rawDayData, driverRanks: currentRanks, ondutyStatus: ondutyStatus, driverStatus: driverStatus };
                     const dispatchResult = calculateDispatchLogic(computedDayData, driverNames, vehiclesList, excludedIds);
 
                     let dailyLastDriver = -1;
@@ -542,7 +542,7 @@
                 if (allScheduleWithRanks[d2]) allScheduleWithRanks[d2].dispatchResult.forEach(r => { if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id)); });
 
                 const rawDayData = scheduleData[dateStr] || {};
-                return { reserved: rawDayData.reserved || {}, driverStatus: adaptStatus(rawDayData.driverStatus, true, n), ondutyStatus: adaptStatus(rawDayData.ondutyStatus, false, n), driverRanks: currentRanks, overrides: rawDayData.overrides || {}, isHoliday: isPublicHoliday(dateStr), dailyMemo: rawDayData.dailyMemo || "", workLogs: rawDayData.workLogs || {}, _excludedIds: excludedIds, dispatchResult: [] };
+                return { reserved: rawDayData.reserved || {}, driverStatus: rawDayData.driverStatus && rawDayData.driverStatus.length === n ? rawDayData.driverStatus : Array(n).fill(true), ondutyStatus: rawDayData.ondutyStatus && rawDayData.ondutyStatus.length === n ? rawDayData.ondutyStatus : Array(n).fill(false), driverRanks: currentRanks, overrides: rawDayData.overrides || {}, isHoliday: isPublicHoliday(dateStr), dailyMemo: rawDayData.dailyMemo || "", workLogs: rawDayData.workLogs || {}, _excludedIds: excludedIds, dispatchResult: [] };
             };
 
             const currentDayData = useMemo(() => { return { ...getCalculatedDayData(selectedDateStr) }; }, [selectedDateStr, allScheduleWithRanks]);
@@ -592,12 +592,14 @@
             const handleDownloadExcel = () => {
                 if (statsMode === 'monthly') {
                     const stats = calculateStatsForRange(statsYear, statsMonth, statsYear, statsMonth, true);
-                    const yearlyStats = calculateStatsForRange(statsYear, 0, statsYear, 11, false);
+                    const yearlyStatsAll = calculateStatsForRange(statsYear, 0, statsYear, 11, false);
                     const excelData = stats.filter(s => s.nm).map((s, idx) => {
-                        return { '이름': s.nm, '당일(회)': s.c1, '1박(회)': s.c2, '2박(회)': s.c3, '공공예약(회)': s.typeCounts['공공예약'] || 0, '시티투어(회)': s.typeCounts['시티투어'] || 0, '성묘지원(회)': s.typeCounts['성묘지원'] || 0, '나들이(회)': s.typeCounts['나들이'] || 0, '기타(회)': s.typeCounts['기타'] || 0, '인정 시간(h)': s.tA.toFixed(3), '금월 수당(원)': s.tM, '금년 예상합계(원)': yearlyStats[idx].totalMoney };
+                        return { '이름': s.nm, '당일(회)': s.c1, '1박(회)': s.c2, '2박(회)': s.c3, '공공예약(회)': s.typeCounts['공공예약'] || 0, '시티투어(회)': s.typeCounts['시티투어'] || 0, '성묘지원(회)': s.typeCounts['성묘지원'] || 0, '나들이(회)': s.typeCounts['나들이'] || 0, '기타(회)': s.typeCounts['기타'] || 0, '인정 시간(h)': s.tA.toFixed(3), '금월 누적수당(원)': s.tM, '금년 예상합계(원)': yearlyStatsAll.filter((_, i) => stats[i].nm)[idx].totalMoney };
                     });
+                    
                     const validStats = stats.filter(s => s.nm);
-                    const validYearlyStatsAll = yearlyStats.filter((_, i) => stats[i].nm);
+                    const validYearlyStatsAll = yearlyStatsAll.filter((_, i) => stats[i].nm);
+                    
                     const totalMonth = validStats.reduce((sum, s) => sum + s.tM, 0);
                     const totalMonthHours = validStats.reduce((sum, s) => sum + s.tA, 0);
                     const totalYear = validYearlyStatsAll.reduce((sum, s) => sum + s.totalMoney, 0);
@@ -610,7 +612,7 @@
                     const totalPicnic = validStats.reduce((sum, s) => sum + (s.typeCounts['나들이'] || 0), 0);
                     const totalEtc = validStats.reduce((sum, s) => sum + (s.typeCounts['기타'] || 0), 0);
 
-                    excelData.push({ '이름': '총계', '당일(회)': totalC1, '1박(회)': totalC2, '2박(회)': totalC3, '공공예약(회)': totalPub, '시티투어(회)': totalCity, '성묘지원(회)': totalGrave, '나들이(회)': totalPicnic, '기타(회)': totalEtc, '인정 시간(h)': totalMonthHours.toFixed(3), '금월 수당(원)': totalMonth, '금년 예상합계(원)': totalYear });
+                    excelData.push({ '이름': '총계', '당일(회)': totalC1, '1박(회)': totalC2, '2박(회)': totalC3, '공공예약(회)': totalPub, '시티투어(회)': totalCity, '성묘지원(회)': totalGrave, '나들이(회)': totalPicnic, '기타(회)': totalEtc, '인정 시간(h)': totalMonthHours.toFixed(3), '금월 누적수당(원)': totalMonth, '금년 예상합계(원)': totalYear });
                     
                     const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(excelData);
                     XLSX.utils.book_append_sheet(wb, ws, `${statsYear}년_${statsMonth+1}월_정산`);
@@ -627,8 +629,8 @@
 
                     const excelData = stats.filter(s => s.nm).map(s => {
                         const row = { '이름': s.nm, '당일(회)': s.c1, '1박(회)': s.c2, '2박(회)': s.c3, '공공예약(회)': s.typeCounts['공공예약'] || 0, '시티투어(회)': s.typeCounts['시티투어'] || 0, '나들이(회)': s.typeCounts['나들이'] || 0, '성묘지원(회)': s.typeCounts['성묘지원'] || 0, '기타(회)': s.typeCounts['기타'] || 0 };
-                        if (yearlyViewType === 'money') { s.months.forEach((d, idx) => { row[`${idx+1}월`] = d.m; }); row['총 인정시간(h)'] = s.totalHours.toFixed(3); row['총 수당(원)'] = s.totalMoney; } 
-                        else { s.months.forEach((d, idx) => { row[`${idx+1}월`] = d.h.toFixed(3); }); row['총 인정시간(h)'] = s.totalHours.toFixed(3); row['총 수당(원)'] = s.totalMoney; }
+                        if (yearlyViewType === 'money') { s.months.forEach((d, idx) => { row[`${idx+1}월 누적`] = d.m; }); row['총 누적시간(h)'] = s.totalHours.toFixed(3); row['총 누적수당(원)'] = s.totalMoney; } 
+                        else { s.months.forEach((d, idx) => { row[`${idx+1}월 누적`] = d.h.toFixed(3); }); row['총 누적시간(h)'] = s.totalHours.toFixed(3); row['총 누적수당(원)'] = s.totalMoney; }
                         return row;
                     });
 
@@ -642,10 +644,10 @@
                     for (let m = 0; m < 12; m++) {
                         const mTotalMoney = stats.filter(s => s.nm).reduce((sum, s) => sum + s.months[m].m, 0);
                         const mTotalHours = stats.filter(s => s.nm).reduce((sum, s) => sum + s.months[m].h, 0);
-                        if (yearlyViewType === 'money') totalRow[`${m+1}월`] = mTotalMoney; else totalRow[`${m+1}월`] = mTotalHours.toFixed(3);
+                        if (yearlyViewType === 'money') totalRow[`${m+1}월 누적`] = mTotalMoney; else totalRow[`${m+1}월 누적`] = mTotalHours.toFixed(3);
                         grandTotalMoney += mTotalMoney; grandTotalHours += mTotalHours;
                     }
-                    totalRow['총 인정시간(h)'] = grandTotalHours.toFixed(3); totalRow['총 수당(원)'] = grandTotalMoney;
+                    totalRow['총 누적시간(h)'] = grandTotalHours.toFixed(3); totalRow['총 누적수당(원)'] = grandTotalMoney;
                     excelData.push(totalRow);
 
                     const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(excelData);
@@ -668,12 +670,18 @@
             const deactivateDriver = async (idx) => { const nD = [...driverNames]; nD[idx] = ""; await handleSaveMaster(nD, null); };
             const removeDriver = async (idx) => { if (!confirm("경고: 해당 운전자를 완전히 삭제하시겠습니까? (기존 배차 기록의 순번이 변경될 수 있습니다)")) return; const nD = [...driverNames]; nD.splice(idx, 1); await handleSaveMaster(nD, null); };
             const updateDriverName = async (idx, name) => { const nD = [...driverNames]; nD[idx] = name; await handleSaveMaster(nD, null); };
+            const sortDriversByRank = async () => {
+                const ids = driverNames.map((_, i) => i).sort((a, b) => currentDayData.driverRanks[a] - currentDayData.driverRanks[b]);
+                const newDriverNames = ids.map(i => driverNames[i]);
+                await handleSaveMaster(newDriverNames, null);
+                setModal({ type: null });
+            };
             const addVehicle = async (name, plate, type) => { await handleSaveMaster(null, [...vehiclesList, { id: 'V_' + Date.now(), name, plate, type, capacity: type === 'BUS' ? 2 : 1 }]); };
             const removeVehicle = async (id) => { if (confirm("삭제하시겠습니까?")) await handleSaveMaster(null, vehiclesList.filter(v => v.id !== id)); };
             const updateVehiclePlate = async (id, newPlate) => { await handleSaveMaster(null, vehiclesList.map(v => v.id === id ? { ...v, plate: newPlate } : v)); };
 
             const toggleDriverStatus = (idx) => { 
-                const n = { ...currentDayData, driverStatus: [...currentDayData.driverStatus], overrides: { ...(currentDayData.overrides || {}) } }; 
+                const n = { ...currentDayData, driverStatus: [...currentDayData.driverStatus], overrides: { ...currentDayData.overrides } }; 
                 n.driverStatus[idx] = !n.driverStatus[idx]; 
                 if (!n.driverStatus[idx]) { Object.keys(n.overrides).forEach(key => { if (n.overrides[key] === idx) { delete n.overrides[key]; } }); }
                 handleSaveDay(n); 
@@ -687,15 +695,8 @@
             
             const updateDriverRank = (idx, val) => { const n = { ...currentDayData, driverRanks: [...currentDayData.driverRanks] }; n.driverRanks[idx] = parseInt(val) || 0; handleSaveDay(n); };
             
-            const sortDriversByRank = async () => {
-                const ids = driverNames.map((_, i) => i).sort((a, b) => currentDayData.driverRanks[a] - currentDayData.driverRanks[b]);
-                const newDriverNames = ids.map(i => driverNames[i]);
-                await handleSaveMaster(newDriverNames, null);
-                setModal({ type: null });
-            };
-
             const toggleVehicleReservation = (vId) => {
-                const n = { ...currentDayData, reserved: { ...(currentDayData.reserved || {}) }, overrides: { ...(currentDayData.overrides || {}) } };
+                const n = { ...currentDayData, reserved: { ...currentDayData.reserved }, overrides: { ...currentDayData.overrides } };
                 if (n.reserved[vId]) {
                     delete n.reserved[vId];
                     const nO = { ...n.overrides };
@@ -707,7 +708,7 @@
                 handleSaveDay(n);
             };
 
-            const updateVehicleInfo = (vId, field, value) => { const n = { ...currentDayData, reserved: { ...(currentDayData.reserved || {}) } }; 
+            const updateVehicleInfo = (vId, field, value) => { const n = { ...currentDayData, reserved: { ...currentDayData.reserved } }; 
                 if (n.reserved[vId]) { 
                     if (field === 'duration') {
                         const numDuration = (['seoul', 'etc', 'grave', 'picnic'].includes(value)) ? 1 : parseInt(value);
@@ -721,7 +722,7 @@
             };
 
             const updateDailyTime = (vId, dayIndex, field, value) => {
-                const n = { ...currentDayData, reserved: { ...(currentDayData.reserved || {}) } };
+                const n = { ...currentDayData, reserved: { ...currentDayData.reserved } };
                 if (n.reserved[vId]) {
                     const info = n.reserved[vId];
                     const newDailyTimes = [...(info.dailyTimes || [{startTime: info.startTime || '09:00', endTime: info.endTime || '18:00', isHolidayWork: info.isHolidayWork || false}])];
@@ -731,10 +732,10 @@
                     handleSaveDay(n);
                 }
             };
-            const applyReplacement = (targetKey, driverId) => { const n = { ...currentDayData, overrides: { ...(currentDayData.overrides || {}) } }; if (driverId === null) delete n.overrides[targetKey]; else n.overrides[targetKey] = driverId; handleSaveDay(n); setModal({ type: null }); };
+            const applyReplacement = (targetKey, driverId) => { const n = { ...currentDayData, overrides: { ...currentDayData.overrides } }; if (driverId === null) delete n.overrides[targetKey]; else n.overrides[targetKey] = driverId; handleSaveDay(n); setModal({ type: null }); };
             
             const applyKakaoData = (vId, pData) => {
-                const n = { ...currentDayData, reserved: { ...(currentDayData.reserved || {}) } };
+                const n = { ...currentDayData, reserved: { ...currentDayData.reserved } };
                 if (n.reserved[vId]) { 
                     const currentTimes = n.reserved[vId].dailyTimes || [{startTime: n.reserved[vId].startTime || '09:00', endTime: n.reserved[vId].endTime || '18:00', isHolidayWork: n.reserved[vId].isHolidayWork || false}];
                     const updatedTimes = [...currentTimes];
@@ -845,6 +846,12 @@
                                                 {Object.values(vehicleGroups).map((group, gIdx) => (
                                                     <div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color} shadow-sm`}>
                                                         {group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-gray-500 rounded">취소</span>}
+                                                        
+                                                        {/* 서울 배지 추가 */}
+                                                        {group.rawDuration === 'seoul' && !group.isCancelled && (
+                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-sky-500 rounded">서울</span>
+                                                        )}
+
                                                         {group.rawDuration === 'etc' && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-purple-500 rounded">기타</span>}
                                                         {group.duration > 1 && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-red-500 rounded">{group.duration - 1}박</span>}
                                                         {(group.operationType === '공공예약' && !['grave', 'picnic', 'etc', 'seoul'].includes(group.rawDuration)) && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-indigo-500 rounded">공공</span>}
@@ -994,7 +1001,7 @@
                                                         {item.info.isCancelled && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold mr-1">취소됨</span>}
                                                         {item.info.isUnavailable && <span className="text-[10px] bg-purple-100 text-purple-600 px-2 py-0.5 rounded font-bold mr-1">운전원변경</span>}
                                                         <span className="text-xs bg-white border border-slate-200 px-2.5 py-1 rounded-md text-slate-600 shadow-sm font-bold">
-                                                            {item.info.duration === 'seoul' ? '서울' : (item.info.duration === 'etc' ? '기타' : (item.info.duration === 'grave' ? '성묘지원' : (item.info.duration === 'picnic' ? '나들이' : (item.info.duration > 1 ? (item.info.duration-1)+'박' : '당일'))))}
+                                                            {item.info.duration === 'seoul' ? '서울' : (item.info.duration === 'etc' ? '기타' : (item.info.duration > 1 ? (item.info.duration-1)+'박' : '당일'))}
                                                         </span>
                                                         <div className="text-[10px] text-slate-500 mt-1.5 font-medium leading-tight max-w-[150px] break-keep">{timesInfo}</div>
                                                         <div className="mt-1.5"><span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100 font-bold">{item.info.operationType || '공공예약'}</span></div>
@@ -1062,7 +1069,6 @@
                                             </div>
                                         </div>
                                     )}
-
                                 </div>
                             </div>
 
@@ -1256,6 +1262,7 @@
                         </div>
                     </footer>
 
+                    {/* Modals */}
                     {modal.type === 'workLog' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
@@ -1276,13 +1283,7 @@
                                             return (
                                                 <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200">
                                                     <span className="font-extrabold text-sm text-slate-700 w-16 shrink-0">{nm}</span>
-                                                    <input 
-                                                        type="text" 
-                                                        id={`workLogInput_${idx}`} 
-                                                        defaultValue={currentLogs[idx] || ""} 
-                                                        placeholder="업무 내용 입력 (예: 차량 정비, 사무실 대기)" 
-                                                        className="w-full text-xs border rounded p-2 outline-none focus:border-sky-400 font-bold"
-                                                    />
+                                                    <input type="text" id={`workLogInput_${idx}`} defaultValue={currentLogs[idx] || ""} placeholder="업무 내용 입력 (예: 차량 정비, 사무실 대기)" className="w-full text-xs border rounded p-2 outline-none focus:border-sky-400 font-bold"/>
                                                 </div>
                                             );
                                         });
@@ -1297,15 +1298,11 @@
                                             const val = document.getElementById(`workLogInput_${idx}`).value.trim();
                                             if (val) newLogs[idx] = val;
                                         });
-                                        
                                         try {
                                             await db.doc(`artifacts/${APP_ID}/public/data/calendar/${modalDate}`).set({ workLogs: newLogs }, { merge: true });
                                             alert('업무일지가 저장되었습니다.');
                                             setModal({ type: null });
-                                        } catch (err) {
-                                            console.error("업무일지 저장 실패:", err);
-                                            alert("저장 중 오류가 발생했습니다.");
-                                        }
+                                        } catch (err) { alert("저장 중 오류가 발생했습니다."); }
                                     }} className="w-full bg-sky-500 text-white py-3 rounded-xl font-bold hover:bg-sky-600 transition flex items-center justify-center gap-2">
                                         <Icons.Plus className="w-4 h-4"/> 저장하기
                                     </button>
@@ -1334,14 +1331,10 @@
                                         const dateVal = document.getElementById('notiDateInput').value;
                                         const textVal = document.getElementById('notiTextInput').value;
                                         if(!dateVal) { alert('날짜를 선택해주세요.'); return; }
-                                        
                                         try {
                                             await db.doc(`artifacts/${APP_ID}/public/data/calendar/${dateVal}`).set({ dailyMemo: textVal }, { merge: true });
                                             setModal({ type: null });
-                                        } catch (err) {
-                                            console.error("알림 저장 실패:", err);
-                                            alert("저장 중 오류가 발생했습니다.");
-                                        }
+                                        } catch (err) { alert("저장 중 오류가 발생했습니다."); }
                                     }} className="w-full bg-rose-500 text-white py-3 rounded-xl font-bold mt-2 hover:bg-rose-600 transition flex items-center justify-center gap-2">
                                         <Icons.Plus className="w-4 h-4"/> 등록하기
                                     </button>
@@ -1374,7 +1367,6 @@
                                         const pM = txt.match(/\d{2,3}-\d{3,4}-\d{4}/); if(pM) pData.custPhone = pM[0];
                                         const nM = txt.match(/(?:성함|예약자|담당자)[:\s]+([가-힣]{2,4})/) || txt.match(/([가-힣]{2,4})\s?(?:님|과장|차장|부장)/);
                                         if(nM) pData.custName = nM[1];
-                                        
                                         applyKakaoData(modal.data, pData);
                                     }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">분석 및 적용</button>
                                 </div>
@@ -1390,29 +1382,15 @@
                                     <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
                                 </div>
                                 <div className="p-6 space-y-4">
+                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">당일 운행 수당</label><input type="number" id="payDayInput" defaultValue={paySettings.day} className="w-full border rounded-lg p-2 text-sm font-bold"/></div>
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 mb-1">당일 운행 수당</label>
-                                        <input type="number" id="payDayInput" defaultValue={paySettings.day} className="w-full border rounded-lg p-2 text-sm font-bold"/>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 mb-1">숙박 운행 (1일당 수당)</label>
-                                        <input type="number" id="paySleepInput" defaultValue={paySettings.sleep} className="w-full border rounded-lg p-2 text-sm font-bold"/>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">숙박 운행 (1일당 수당)</label><input type="number" id="paySleepInput" defaultValue={paySettings.sleep} className="w-full border rounded-lg p-2 text-sm font-bold"/>
                                         <p className="text-[10px] text-slate-400 mt-1">* 1박(2일)은 위 금액 × 2, 2박(3일)은 위 금액 × 3으로 계산됩니다.</p>
                                     </div>
-                                    <div className="border-t border-slate-200 pt-4">
-                                        <label className="block text-xs font-bold text-slate-500 mb-1">성묘 지원 수당</label>
-                                        <input type="number" id="payGraveInput" defaultValue={paySettings.grave} className="w-full border rounded-lg p-2 text-sm font-bold"/>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 mb-1">나들이 수당</label>
-                                        <input type="number" id="payPicnicInput" defaultValue={paySettings.picnic} className="w-full border rounded-lg p-2 text-sm font-bold"/>
-                                    </div>
+                                    <div className="border-t border-slate-200 pt-4"><label className="block text-xs font-bold text-slate-500 mb-1">성묘 지원 수당</label><input type="number" id="payGraveInput" defaultValue={paySettings.grave} className="w-full border rounded-lg p-2 text-sm font-bold"/></div>
+                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">나들이 수당</label><input type="number" id="payPicnicInput" defaultValue={paySettings.picnic} className="w-full border rounded-lg p-2 text-sm font-bold"/></div>
                                     <button onClick={() => {
-                                        const day = document.getElementById('payDayInput').value;
-                                        const sleep = document.getElementById('paySleepInput').value;
-                                        const grave = document.getElementById('payGraveInput').value;
-                                        const picnic = document.getElementById('payPicnicInput').value;
-                                        updatePaySettings(day, sleep, grave, picnic);
+                                        updatePaySettings(document.getElementById('payDayInput').value, document.getElementById('paySleepInput').value, document.getElementById('payGraveInput').value, document.getElementById('payPicnicInput').value);
                                     }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold mt-2">저장하기</button>
                                 </div>
                             </div>
@@ -1431,49 +1409,19 @@
                                         <input type="text" id="newDriverName" placeholder="새 운전자 이름" className="w-full text-xs border rounded p-2 outline-none focus:ring-2 focus:ring-orange-400 font-bold" onKeyDown={(e) => { if(e.key==='Enter') { addDriver(e.target.value); e.target.value=''; }}}/>
                                         <button onClick={() => { const el = document.getElementById('newDriverName'); addDriver(el.value); el.value=''; }} className="bg-slate-800 text-white w-12 rounded text-xs shrink-0 font-bold">등록</button>
                                     </div>
-                                    <button onClick={sortDriversByRank} className="w-full bg-blue-50 text-blue-600 text-xs font-bold py-2 rounded-lg hover:bg-blue-100 transition-colors border border-blue-100 shadow-sm">
-                                        현재 일일 순번대로 목록 정렬
-                                    </button>
+                                    <button onClick={sortDriversByRank} className="w-full bg-blue-50 text-blue-600 text-xs font-bold py-2 rounded-lg hover:bg-blue-100 transition-colors border border-blue-100 shadow-sm">현재 일일 순번대로 목록 정렬</button>
                                 </div>
                                 <div className="p-4 overflow-y-auto flex-grow bg-slate-50 space-y-2">
                                     {driverNames.map((nm, i) => {
                                         const isActive = nm !== "" && nm !== undefined;
                                         return (
                                             <div key={i} className={`flex justify-between items-center p-2.5 border border-slate-200 rounded-lg text-sm font-bold bg-white shadow-sm transition-all hover:border-orange-200 gap-2 ${!isActive ? 'opacity-50 grayscale' : ''}`}>
-                                                <button 
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        if(isActive) deactivateDriver(i);
-                                                        else updateDriverName(i, "복구됨");
-                                                    }} 
-                                                    className={`shrink-0 p-1.5 rounded-md transition-colors flex items-center justify-center w-8 h-8 shadow-sm ${isActive ? 'text-white bg-emerald-500 hover:bg-emerald-600' : 'text-slate-400 bg-slate-200 hover:bg-slate-300'}`}
-                                                    title={isActive ? "목록에서 숨기기 (순번 유지)" : "다시 활성화"}
-                                                >
+                                                <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); if(isActive) deactivateDriver(i); else updateDriverName(i, "복구됨"); }} className={`shrink-0 p-1.5 rounded-md transition-colors flex items-center justify-center w-8 h-8 shadow-sm ${isActive ? 'text-white bg-emerald-500 hover:bg-emerald-600' : 'text-slate-400 bg-slate-200 hover:bg-slate-300'}`} title={isActive ? "목록에서 숨기기" : "다시 활성화"}>
                                                     <Icons.UserCheck className="w-4 h-4 pointer-events-none"/>
                                                 </button>
-                                                
                                                 <AutoSaveInput type="number" value={currentDayData.driverRanks[i] || 0} onSave={(val) => updateDriverRank(i, val)} className="w-12 text-center border border-slate-200 rounded bg-slate-50 py-1.5" disabled={!isActive} />
-                                                
-                                                <AutoSaveInput 
-                                                    value={nm || ""} 
-                                                    onSave={(val) => updateDriverName(i, val)} 
-                                                    className={`w-full outline-none bg-transparent focus:bg-slate-50 rounded px-1 transition-colors font-extrabold ${!isActive ? 'line-through text-slate-400' : 'text-slate-700'}`}
-                                                    placeholder={!isActive ? "비활성됨" : "이름 입력"}
-                                                    disabled={!isActive}
-                                                />
-                                                
-                                                <button 
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        removeDriver(i);
-                                                    }} 
-                                                    className="text-red-400 hover:text-red-600 hover:bg-red-50 shrink-0 p-1.5 rounded transition-colors flex items-center justify-center" 
-                                                    title="완전히 삭제 (순번 변경됨)"
-                                                >
+                                                <AutoSaveInput value={nm || ""} onSave={(val) => updateDriverName(i, val)} className={`w-full outline-none bg-transparent focus:bg-slate-50 rounded px-1 transition-colors font-extrabold ${!isActive ? 'line-through text-slate-400' : 'text-slate-700'}`} placeholder={!isActive ? "비활성됨" : "이름 입력"} disabled={!isActive} />
+                                                <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeDriver(i); }} className="text-red-400 hover:text-red-600 hover:bg-red-50 shrink-0 p-1.5 rounded transition-colors flex items-center justify-center" title="완전히 삭제">
                                                     <Icons.Trash2 className="w-4 h-4 pointer-events-none"/>
                                                 </button>
                                             </div>
@@ -1502,9 +1450,7 @@
                                         </select>
                                         <button onClick={()=>{
                                             const n=document.getElementById('addVName').value, p=document.getElementById('addVPlate').value, t=document.getElementById('addVType').value;
-                                            if(!n) return; 
-                                            addVehicle(n,p,t);
-                                            document.getElementById('addVName').value=''; document.getElementById('addVPlate').value='';
+                                            if(!n) return; addVehicle(n,p,t); document.getElementById('addVName').value=''; document.getElementById('addVPlate').value='';
                                         }} className="bg-slate-800 text-white w-12 rounded text-xs shrink-0">등록</button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 max-h-[400px] overflow-y-auto">
@@ -1512,12 +1458,7 @@
                                             <div key={v.id} className="flex justify-between items-center p-3 border rounded-lg text-sm font-bold bg-white">
                                                 <div className="flex flex-col w-full mr-2">
                                                     <span>{v.name}</span>
-                                                    <AutoSaveInput 
-                                                        value={v.plate} 
-                                                        onSave={(val) => updateVehiclePlate(v.id, val)} 
-                                                        placeholder="번호 입력" 
-                                                        className="text-[10px] text-slate-400 font-normal outline-none bg-transparent hover:bg-slate-50 focus:bg-slate-50 rounded px-1 -ml-1 w-full transition-colors"
-                                                    />
+                                                    <AutoSaveInput value={v.plate} onSave={(val) => updateVehiclePlate(v.id, val)} placeholder="번호 입력" className="text-[10px] text-slate-400 font-normal outline-none bg-transparent hover:bg-slate-50 focus:bg-slate-50 rounded px-1 -ml-1 w-full transition-colors" />
                                                 </div>
                                                 <button onClick={() => removeVehicle(v.id)} className="text-red-300 hover:text-red-500 shrink-0"><Icons.Trash2 className="w-4 h-4"/></button>
                                             </div>
@@ -1568,9 +1509,7 @@
                                             <Icons.Upload className="w-5 h-5"/> 백업 파일로 복원
                                         </button>
                                     </div>
-                                    <p className="text-xs text-slate-400 text-center mt-2">
-                                        * 백업 파일(.json)을 선택하면 현재 데이터가 덮어씌워집니다.
-                                    </p>
+                                    <p className="text-xs text-slate-400 text-center mt-2">* 백업 파일(.json)을 선택하면 현재 데이터가 덮어씌워집니다.</p>
                                 </div>
                             </div>
                         </div>
@@ -1734,9 +1673,7 @@
                                                         let grandTotal = 0;
                                                         let totalC1=0, totalC2=0, totalC3=0, totalPub=0, totalCity=0, totalPicnic=0, totalGrave=0, totalEtc=0;
                                                         
-                                                        const rows = [];
-                                                        stats.forEach((s, i) => {
-                                                            if (!s.nm) return;
+                                                        const rows = stats.filter(s => s.nm).map((s, i) => {
                                                             s.months.forEach((d, m) => { monthlyTotals[m] += (yearlyViewType === 'money' ? d.m : d.h); });
                                                             const rowTotal = yearlyViewType === 'money' ? s.totalMoney : s.totalHours;
                                                             grandTotal += rowTotal;
@@ -1748,7 +1685,7 @@
                                                             totalGrave += (s.typeCounts['성묘지원'] || 0);
                                                             totalEtc += (s.typeCounts['기타'] || 0);
 
-                                                            rows.push(
+                                                            return (
                                                                 <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 transition">
                                                                     <td className="pl-4 py-2 font-extrabold sticky left-0 bg-white z-10 border-r border-slate-100">{s.nm}</td>
                                                                     <td className={`text-center ${s.c1 > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{s.c1 > 0 ? s.c1 : '-'}</td>
