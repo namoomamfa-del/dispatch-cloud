@@ -441,13 +441,13 @@
                     const effectiveCapacity = info.isSingleDriver ? 1 : v.capacity;
                     for(let i=0; i<effectiveCapacity; i++) {
                         const key = `${v.id}_${i}`;
+                        
+                        // 수동 배정(운전원 변경) 시에도 자동 배정 풀(pool)의 순번을 하나 소모하여 
+                        // 다음 차량의 배정 순번이 밀리거나 꼬이지 않도록 보장합니다.
                         let autoDriver = null;
-                        let shouldConsumeTurn = false;
-                        if (info.isCancelled) shouldConsumeTurn = true;
-                        else if (info.isUnavailable) shouldConsumeTurn = true;
-                        else if (manualAssignments[key] === undefined) shouldConsumeTurn = true;
-
-                        if (shouldConsumeTurn && pool.length > 0) autoDriver = pool.shift();
+                        if (pool.length > 0) {
+                            autoDriver = pool.shift();
+                        }
 
                         if (manualAssignments[key] !== undefined) {
                             const dId = manualAssignments[key];
