@@ -112,7 +112,8 @@
             Palette: ({className}) => <i className={`fa-solid fa-palette ${className}`} />,
             MessageCircle: ({className}) => <i className={`fa-regular fa-comment-dots ${className}`} />,
             Bell: ({className}) => <i className={`fa-regular fa-bell ${className}`} />,
-            ClipboardList: ({className}) => <i className={`fa-solid fa-clipboard-list ${className}`} />
+            ClipboardList: ({className}) => <i className={`fa-solid fa-clipboard-list ${className}`} />,
+            Wrench: ({className}) => <i className={`fa-solid fa-wrench ${className}`} />
         };
 
         const DEFAULT_PAY_SETTINGS = { day: 12500, sleep: 37500, grave: 0, picnic: 0 };
@@ -297,6 +298,11 @@
             const [driverNames, setDriverNames] = useState([]);
             const [vehiclesList, setVehiclesList] = useState([]);
             const [paySettings, setPaySettings] = useState(DEFAULT_PAY_SETTINGS);
+            const [maintenanceLogs, setMaintenanceLogs] = useState([]);
+            const [maintSearch, setMaintSearch] = useState('');
+            const [maintStartDate, setMaintStartDate] = useState('');
+            const [maintEndDate, setMaintEndDate] = useState('');
+            const [maintSearchVehicle, setMaintSearchVehicle] = useState('');
             
             const [scheduleData, setScheduleData] = useState({});
             const [modal, setModal] = useState({ type: null, data: null });
@@ -367,7 +373,11 @@
                 const unsubCalendar = db.collection(`artifacts/${APP_ID}/public/data/calendar`).onSnapshot((snapshot) => {
                     const newSchedule = {}; snapshot.forEach((doc) => { newSchedule[doc.id] = doc.data(); }); setScheduleData(newSchedule);
                 });
-                return () => { unsubMaster(); unsubCalendar(); };
+                const unsubMaintenance = db.doc(`artifacts/${APP_ID}/public/data/settings/maintenance`).onSnapshot((docSnap) => {
+                    if (docSnap.exists) { setMaintenanceLogs(docSnap.data().logs || []); } 
+                    else { setMaintenanceLogs([]); }
+                });
+                return () => { unsubMaster(); unsubCalendar(); unsubMaintenance(); };
             }, [user]);
 
             const moveMonth = (offset) => { const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + offset, 1); setViewDate(newDate); };
@@ -378,7 +388,7 @@
             };
 
             const handleBackup = () => {
-                const data = { version: 1, timestamp: new Date().toISOString(), master: { driverNames, vehiclesList, paySettings }, calendar: scheduleData };
+                const data = { version: 1, timestamp: new Date().toISOString(), master: { driverNames, vehiclesList, paySettings }, maintenance: { logs: maintenanceLogs }, calendar: scheduleData };
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = `dispatch_backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
@@ -393,6 +403,7 @@
                         if (!confirm("현재 데이터를 덮어쓰고 백업 데이터를 복원하시겠습니까?")) return;
                         setIsLoading(true);
                         if (data.master) await db.doc(`artifacts/${APP_ID}/public/data/settings/master`).set(data.master);
+                        if (data.maintenance) await db.doc(`artifacts/${APP_ID}/public/data/settings/maintenance`).set(data.maintenance);
                         if (data.calendar) { await Promise.all(Object.entries(data.calendar).map(([date, dayData]) => db.collection(`artifacts/${APP_ID}/public/data/calendar`).doc(date).set(dayData))); }
                         alert("데이터 복원 완료"); setModal({ type: null });
                     } catch (err) { alert("오류 발생"); console.error(err); } finally { setIsLoading(false); }
@@ -546,6 +557,41 @@
             };
 
             const currentDayData = useMemo(() => { return { ...getCalculatedDayData(selectedDateStr) }; }, [selectedDateStr, allScheduleWithRanks]);
+
+            const filteredMaintenanceLogs = useMemo(() => {
+                let filtered = maintenanceLogs;
+                
+                if (maintStartDate) {
+                    filtered = filtered.filter(log => log.date >= maintStartDate);
+                }
+                if (maintEndDate) {
+                    filtered = filtered.filter(log => log.date <= maintEndDate);
+                }
+                if (maintSearchVehicle) {
+                    filtered = filtered.filter(log => log.vehicleId === maintSearchVehicle);
+                }
+                
+                if (maintSearch.trim()) {
+                    const lowerSearch = maintSearch.toLowerCase();
+                    filtered = filtered.filter(log => {
+                        const vehicle = vehiclesList.find(v => v.id === log.vehicleId) || { name: '' };
+                        return vehicle.name.toLowerCase().includes(lowerSearch) || log.content.toLowerCase().includes(lowerSearch);
+                    });
+                }
+                return filtered;
+            }, [maintenanceLogs, maintSearch, maintStartDate, maintEndDate, maintSearchVehicle, vehiclesList]);
+
+            const groupedMaintenanceLogs = useMemo(() => {
+                const groups = {};
+                filteredMaintenanceLogs.forEach(log => {
+                    const month = log.date.substring(0, 7); // YYYY-MM 추출
+                    if (!groups[month]) groups[month] = [];
+                    if (groups[month].length < 15) { // 각 월별 최대 15개까지만 표시
+                        groups[month].push(log);
+                    }
+                });
+                return groups;
+            }, [filteredMaintenanceLogs]);
 
             const calculateStatsForRange = (startYear, startMonth, endYear, endMonth, limitToToday = false) => {
                 const todayStr = getTodayStr();
@@ -747,6 +793,24 @@
                     handleSaveDay(n); 
                 }
                 setModal({ type: null });
+            };
+
+            const addMaintenanceLog = async (vehicleId, content, dateStr) => {
+                if (!content.trim()) return;
+                const logDate = dateStr || getTodayStr();
+                const newLog = { id: Date.now().toString(), vehicleId, content: content.trim(), date: logDate, isCompleted: false };
+                const newLogs = [newLog, ...maintenanceLogs];
+                await db.doc(`artifacts/${APP_ID}/public/data/settings/maintenance`).set({ logs: newLogs });
+            };
+
+            const toggleMaintenanceLog = async (id) => {
+                const newLogs = maintenanceLogs.map(log => log.id === id ? { ...log, isCompleted: !log.isCompleted } : log);
+                await db.doc(`artifacts/${APP_ID}/public/data/settings/maintenance`).set({ logs: newLogs });
+            };
+
+            const deleteMaintenanceLog = async (id) => {
+                const newLogs = maintenanceLogs.filter(log => log.id !== id);
+                await db.doc(`artifacts/${APP_ID}/public/data/settings/maintenance`).set({ logs: newLogs });
             };
 
             const updatePaySettings = async (day, sleep, grave, picnic) => {
@@ -1091,6 +1155,69 @@
                                         );
                                     })}
                                     {driverNames.filter(n => n).length === 0 && <div className="text-center text-slate-400 text-xs py-10">등록된 운전자가 없습니다.</div>}
+                                </div>
+                            </div>
+
+                            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
+                                <div className="flex justify-between items-center mb-4 font-bold flex-wrap gap-2">
+                                    <h2 className="text-sm flex items-center gap-2"><Icons.Wrench className="text-slate-500 w-4 h-4"/> 차량정비게시판</h2>
+                                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                                        <select value={maintSearchVehicle} onChange={(e) => setMaintSearchVehicle(e.target.value)} className="text-[10px] border rounded-lg p-1.5 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold">
+                                            <option value="">모든 차량</option>
+                                            {vehiclesList.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                        </select>
+                                        <div className="flex items-center gap-1 bg-slate-50 rounded-lg border px-1 py-1">
+                                            <input type="date" value={maintStartDate} onChange={(e) => setMaintStartDate(e.target.value)} className="text-[10px] bg-transparent outline-none font-bold text-slate-600 w-[95px]"/>
+                                            <span className="text-slate-400 text-[10px]">~</span>
+                                            <input type="date" value={maintEndDate} onChange={(e) => setMaintEndDate(e.target.value)} className="text-[10px] bg-transparent outline-none font-bold text-slate-600 w-[95px]"/>
+                                        </div>
+                                        <div className="relative flex items-center">
+                                            <Icons.Search className="absolute left-2 w-3 h-3 text-slate-400" />
+                                            <input type="text" value={maintSearch} onChange={(e) => setMaintSearch(e.target.value)} placeholder="내역 검색" className="pl-6 pr-2 py-1.5 text-[10px] border rounded-lg outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 w-[100px] font-bold" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2 mb-2">
+                                    <input type="date" id="maintDateInput" defaultValue={getTodayStr()} className="text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold max-w-[115px]" />
+                                    <select id="maintVehicleSelect" className="text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold max-w-[80px]">
+                                        {vehiclesList.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                    </select>
+                                    <input type="text" id="maintContentInput" className="flex-grow text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold" placeholder="정비/점검 내역 입력" onKeyDown={(e) => { if(e.key==='Enter') { const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, e.target.value, dStr); e.target.value=''; } }} />
+                                    <button onClick={() => { const el = document.getElementById('maintContentInput'); const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, el.value, dStr); el.value=''; }} className="bg-slate-800 text-white w-8 h-8 rounded-lg flex items-center justify-center shrink-0"><Icons.Plus className="w-4 h-4"/></button>
+                                </div>
+                                <div className="text-[9px] text-slate-400 font-bold mb-2 text-right">월별 최신 15건 표시</div>
+                                <div className="space-y-4 h-[500px] overflow-y-auto pr-1 relative">
+                                    {Object.keys(groupedMaintenanceLogs).length === 0 ? (
+                                        <div className="text-center text-slate-400 text-xs py-10">{(maintSearch || maintStartDate || maintEndDate || maintSearchVehicle) ? "검색 결과가 없습니다." : "등록된 정비 내역이 없습니다."}</div>
+                                    ) : (
+                                        Object.keys(groupedMaintenanceLogs).sort((a, b) => b.localeCompare(a)).map(monthStr => {
+                                            const [yyyy, mm] = monthStr.split('-');
+                                            return (
+                                                <div key={monthStr} className="space-y-2">
+                                                    <div className="sticky top-0 bg-slate-100/90 backdrop-blur px-2 py-1 rounded text-[10px] font-black text-slate-600 border border-slate-200 z-10 shadow-sm">
+                                                        {yyyy}년 {parseInt(mm)}월
+                                                    </div>
+                                                    {groupedMaintenanceLogs[monthStr].map(log => {
+                                                        const vehicle = vehiclesList.find(v => v.id === log.vehicleId) || { name: '삭제된차량' };
+                                                        return (
+                                                            <div key={log.id} className={`flex items-start justify-between p-2.5 rounded-lg border text-xs transition ${log.isCompleted ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-rose-200 shadow-sm'}`}>
+                                                                <div className="flex items-start gap-2 flex-grow">
+                                                                    <input type="checkbox" checked={log.isCompleted} onChange={() => toggleMaintenanceLog(log.id)} className="mt-0.5 w-4 h-4 text-blue-600 rounded cursor-pointer shrink-0"/>
+                                                                    <div className={`flex flex-col ${log.isCompleted ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                                                                        <div className="font-extrabold text-blue-600 mb-0.5 flex items-center gap-1">
+                                                                            {vehicle.name} <span className="text-[9px] text-slate-400 font-normal">{log.date}</span>
+                                                                        </div>
+                                                                        <span className="font-bold leading-tight whitespace-pre-wrap break-keep">{log.content}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <button onClick={() => { if(confirm('삭제하시겠습니까?')) deleteMaintenanceLog(log.id); }} className="text-red-200 hover:text-red-500 shrink-0 p-1"><Icons.Trash2 className="w-3 h-3"/></button>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })
+                                    )}
                                 </div>
                             </div>
 
