@@ -1173,16 +1173,16 @@
                                         </div>
                                         <div className="relative flex items-center">
                                             <Icons.Search className="absolute left-2 w-3 h-3 text-slate-400" />
-                                            <input type="text" value={maintSearch} onChange={(e) => setMaintSearch(e.target.value)} placeholder="내역 검색" className="pl-6 pr-2 py-1.5 text-[10px] border rounded-lg outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 w-[100px] font-bold" />
+                                            <input type="text" value={maintSearch} onChange={(e) => setMaintSearch(e.target.value)} placeholder="내역 검색" className="pl-6 pr-2 py-1.5 text-[10px] border rounded-lg outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 w-[100px] focus:w-[150px] transition-all font-bold" />
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-2 mb-2">
-                                    <input type="date" id="maintDateInput" defaultValue={getTodayStr()} className="text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold max-w-[115px]" />
-                                    <select id="maintVehicleSelect" className="text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold max-w-[80px]">
+                                <div className="flex flex-wrap sm:flex-nowrap gap-2 mb-3">
+                                    <input type="date" id="maintDateInput" defaultValue={getTodayStr()} className="text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold w-[115px] shrink-0" />
+                                    <select id="maintVehicleSelect" className="text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold w-[80px] shrink-0">
                                         {vehiclesList.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                                     </select>
-                                    <input type="text" id="maintContentInput" className="flex-grow text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold" placeholder="정비/점검 내역 입력" onKeyDown={(e) => { if(e.key==='Enter') { const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, e.target.value, dStr); e.target.value=''; } }} />
+                                    <input type="text" id="maintContentInput" className="flex-1 w-full min-w-[150px] text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold" placeholder="정비/점검 내역 입력" onKeyDown={(e) => { if(e.key==='Enter') { const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, e.target.value, dStr); e.target.value=''; } }} />
                                     <button onClick={() => { const el = document.getElementById('maintContentInput'); const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, el.value, dStr); el.value=''; }} className="bg-slate-800 text-white w-8 h-8 rounded-lg flex items-center justify-center shrink-0"><Icons.Plus className="w-4 h-4"/></button>
                                 </div>
                                 <div className="text-[9px] text-slate-400 font-bold mb-2 text-right">월별 최신 15건 표시</div>
