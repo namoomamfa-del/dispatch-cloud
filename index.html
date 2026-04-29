@@ -113,7 +113,8 @@
             MessageCircle: ({className}) => <i className={`fa-regular fa-comment-dots ${className}`} />,
             Bell: ({className}) => <i className={`fa-regular fa-bell ${className}`} />,
             ClipboardList: ({className}) => <i className={`fa-solid fa-clipboard-list ${className}`} />,
-            Wrench: ({className}) => <i className={`fa-solid fa-wrench ${className}`} />
+            Wrench: ({className}) => <i className={`fa-solid fa-wrench ${className}`} />,
+            LogOut: ({className}) => <i className={`fa-solid fa-arrow-right-from-bracket ${className}`} />
         };
 
         const DEFAULT_PAY_SETTINGS = { day: 12500, sleep: 37500, grave: 0, picnic: 0 };
@@ -289,7 +290,23 @@
         };
 
         const App = () => {
+            // =========================================================================
+            // [중요 시스템 스위치]
+            // 아래 값을 true로 변경하시면 언제든지 '이메일/비밀번호' 로그인 화면이 되살아납니다!
+            // 현재는 false로 설정되어 누구나 묻지도 따지지도 않고 바로 사용 가능한 모드입니다.
+            // =========================================================================
+            const ENABLE_LOGIN_SYSTEM = false;
+
+            // --- 로그인 관련 상태 ---
+            const [isAuthReady, setIsAuthReady] = useState(false);
             const [user, setUser] = useState(null);
+            
+            const [isLoginMode, setIsLoginMode] = useState(true);
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [authProcessing, setAuthProcessing] = useState(false);
+            const [authError, setAuthError] = useState('');
+
             const [isLoading, setIsLoading] = useState(true);
             const [selectedDateStr, setSelectedDateStr] = useState(getTodayStr());
             const [viewDate, setViewDate] = useState(getTodayDate());
@@ -349,16 +366,32 @@
 
             useEffect(() => { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }; }, [handleMouseMove]);
 
+            // Firebase 로그인 상태 감지 및 자동 로그인 처리
             useEffect(() => {
-                let isMounted = true;
-                const initAuth = async () => { try { if (!auth.currentUser) await auth.signInAnonymously(); } catch (error) { console.error("Firebase 인증 실패:", error); } };
-                initAuth();
-                const unsubscribeAuth = auth.onAuthStateChanged((u) => { if (isMounted && u) setUser(u); });
-                return () => { isMounted = false; unsubscribeAuth(); };
+                // 로그인 시스템이 꺼져있을 경우 DB 접근을 위해 백그라운드 익명 로그인 처리
+                if (!ENABLE_LOGIN_SYSTEM) {
+                    const initAnonymousAuth = async () => {
+                        try {
+                            if (!auth.currentUser) await auth.signInAnonymously();
+                        } catch (e) {
+                            console.error("익명 로그인 에러:", e);
+                        }
+                    };
+                    initAnonymousAuth();
+                }
+
+                const unsubscribe = auth.onAuthStateChanged((u) => { 
+                    setUser(u); 
+                    setIsAuthReady(true);
+                });
+                return () => unsubscribe();
             }, []);
 
+            // Firebase 데이터 불러오기
             useEffect(() => {
                 if (!user) return;
+                
+                setIsLoading(true);
                 const unsubMaster = db.doc(`artifacts/${APP_ID}/public/data/settings/master`).onSnapshot((docSnap) => {
                     if (docSnap.exists) { 
                         const data = docSnap.data(); 
@@ -370,15 +403,47 @@
                     }
                     setIsLoading(false);
                 });
+                
                 const unsubCalendar = db.collection(`artifacts/${APP_ID}/public/data/calendar`).onSnapshot((snapshot) => {
                     const newSchedule = {}; snapshot.forEach((doc) => { newSchedule[doc.id] = doc.data(); }); setScheduleData(newSchedule);
                 });
+                
                 const unsubMaintenance = db.doc(`artifacts/${APP_ID}/public/data/settings/maintenance`).onSnapshot((docSnap) => {
                     if (docSnap.exists) { setMaintenanceLogs(docSnap.data().logs || []); } 
                     else { setMaintenanceLogs([]); }
                 });
+                
                 return () => { unsubMaster(); unsubCalendar(); unsubMaintenance(); };
             }, [user]);
+
+            const handleAuthSubmit = async (e) => {
+                e.preventDefault();
+                setAuthProcessing(true);
+                setAuthError('');
+                try {
+                    if (isLoginMode) {
+                        await auth.signInWithEmailAndPassword(email, password);
+                    } else {
+                        await auth.createUserWithEmailAndPassword(email, password);
+                    }
+                } catch (err) {
+                    console.error("인증 에러:", err);
+                    if (err.code === 'auth/email-already-in-use') { setAuthError('이미 가입된 이메일입니다.'); }
+                    else if (err.code === 'auth/wrong-password') { setAuthError('비밀번호가 틀렸습니다. 다시 확인해주세요.'); }
+                    else if (err.code === 'auth/user-not-found') { setAuthError('계정을 찾을 수 없습니다.'); }
+                    else if (err.code === 'auth/weak-password') { setAuthError('보안을 위해 비밀번호는 6자리 이상이어야 합니다.'); }
+                    else if (err.code === 'auth/invalid-credential') { setAuthError('계정 정보가 올바르지 않습니다.'); }
+                    else { setAuthError('오류가 발생했습니다. (' + err.code + ')'); }
+                } finally {
+                    setAuthProcessing(false);
+                }
+            };
+
+            const handleLogout = async () => {
+                if(confirm("로그아웃 하시겠습니까?")) {
+                    await auth.signOut();
+                }
+            };
 
             const moveMonth = (offset) => { const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + offset, 1); setViewDate(newDate); };
             const changeStatsMonth = (offset) => {
@@ -418,6 +483,7 @@
                 }
             };
 
+            // 배차 알고리즘 - '긴급 배차(isEmergency)' 적용
             const calculateDispatchLogic = (dayData, drivers, vehicles, excludedDriverIds = new Set()) => {
                 if (!dayData) return [];
                 const currentRanks = dayData.driverRanks && dayData.driverRanks.length === drivers.length ? dayData.driverRanks : drivers.map((_, i) => i + 1);
@@ -450,22 +516,24 @@
                     const info = dayData.reserved[v.id];
                     const slots = [];
                     const effectiveCapacity = info.isSingleDriver ? 1 : v.capacity;
+                    
                     for(let i=0; i<effectiveCapacity; i++) {
                         const key = `${v.id}_${i}`;
                         
-                        // 수동 배정(운전원 변경) 시에도 자동 배정 풀(pool)의 순번을 하나 소모하여 
-                        // 다음 차량의 배정 순번이 밀리거나 꼬이지 않도록 보장합니다.
                         let autoDriver = null;
-                        if (pool.length > 0) {
+                        
+                        // [수정] 긴급 배차일 경우 자동 배정 풀에서 드라이버를 빼지 않음 (순번 소모 X)
+                        if (!info.isEmergency && pool.length > 0) {
                             autoDriver = pool.shift();
                         }
 
                         if (manualAssignments[key] !== undefined) {
                             const dId = manualAssignments[key];
-                            slots.push({ nm: drivers[dId] || '삭제됨', id: dId, type: 'manual', rank: currentRanks[dId], consumedAutoDriverId: autoDriver ? autoDriver.id : undefined });
+                            slots.push({ nm: drivers[dId] || '삭제됨', id: dId, type: info.isEmergency ? 'emergency' : 'manual', rank: currentRanks[dId], consumedAutoDriverId: autoDriver ? autoDriver.id : undefined });
                         } else if (info.isUnavailable) {
                             slots.push(autoDriver ? { ...autoDriver, type: 'excluded', isExcluded: true } : null);
                         } else {
+                            // 빈 자리 (자동 드라이버도 없고, 수동 배정도 없는 경우)
                             slots.push(autoDriver ? { ...autoDriver, type: 'auto' } : null);
                         }
                     }
@@ -514,6 +582,10 @@
                     let dailyLastDriver = -1;
                     for (let i = dispatchResult.length - 1; i >= 0; i--) {
                         const item = dispatchResult[i];
+                        
+                        // [수정] 긴급 배차는 마지막 자동 할당 드라이버를 업데이트하지 않음 (순번에 영향 X)
+                        if (item.info.isEmergency) continue; 
+                        
                         for (let j = item.slots.length - 1; j >= 0; j--) {
                              const slot = item.slots[j];
                              if (slot) {
@@ -553,7 +625,19 @@
                 if (allScheduleWithRanks[d2]) allScheduleWithRanks[d2].dispatchResult.forEach(r => { if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id)); });
 
                 const rawDayData = scheduleData[dateStr] || {};
-                return { reserved: rawDayData.reserved || {}, driverStatus: rawDayData.driverStatus && rawDayData.driverStatus.length === n ? rawDayData.driverStatus : Array(n).fill(true), ondutyStatus: rawDayData.ondutyStatus && rawDayData.ondutyStatus.length === n ? rawDayData.ondutyStatus : Array(n).fill(false), driverRanks: currentRanks, overrides: rawDayData.overrides || {}, isHoliday: isPublicHoliday(dateStr), dailyMemo: rawDayData.dailyMemo || "", workLogs: rawDayData.workLogs || {}, _excludedIds: excludedIds, dispatchResult: [] };
+                return { 
+                    reserved: rawDayData.reserved || {}, 
+                    driverStatus: rawDayData.driverStatus && rawDayData.driverStatus.length === n ? rawDayData.driverStatus : Array(n).fill(true), 
+                    ondutyStatus: rawDayData.ondutyStatus && rawDayData.ondutyStatus.length === n ? rawDayData.ondutyStatus : Array(n).fill(false), 
+                    driverRanks: currentRanks, 
+                    overrides: rawDayData.overrides || {}, 
+                    isHoliday: isPublicHoliday(dateStr), 
+                    dailyMemo: rawDayData.dailyMemo || "", 
+                    memoAuthor: rawDayData.memoAuthor || "", 
+                    workLogs: rawDayData.workLogs || {}, 
+                    _excludedIds: excludedIds, 
+                    dispatchResult: [] 
+                };
             };
 
             const currentDayData = useMemo(() => { return { ...getCalculatedDayData(selectedDateStr) }; }, [selectedDateStr, allScheduleWithRanks]);
@@ -584,9 +668,9 @@
             const groupedMaintenanceLogs = useMemo(() => {
                 const groups = {};
                 filteredMaintenanceLogs.forEach(log => {
-                    const month = log.date.substring(0, 7); // YYYY-MM 추출
+                    const month = log.date.substring(0, 7); 
                     if (!groups[month]) groups[month] = [];
-                    if (groups[month].length < 15) { // 각 월별 최대 15개까지만 표시
+                    if (groups[month].length < 15) { 
                         groups[month].push(log);
                     }
                 });
@@ -600,7 +684,7 @@
                     const lastD = new Date(startYear, m + 1, 0).getDate();
                     for(let d = 1; d <= lastD; d++) {
                         const dStr = `${startYear}-${String(m + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                        if (limitToToday && dStr > todayStr) continue; // 미래 날짜 제외 처리
+                        if (limitToToday && dStr > todayStr) continue; 
                         const dayData = getCalculatedDayData(dStr);
                         const dispatch = dayData.dispatchResult || [];
                         dispatch.forEach(item => {
@@ -749,7 +833,7 @@
                     Object.keys(nO).forEach(k => { if (k.startsWith(vId)) delete nO[k]; });
                     n.overrides = nO;
                 } else {
-                    n.reserved[vId] = { km: 0, duration: 1, destination: '', dailyTimes: [{ startTime: '09:00', endTime: '18:00', isHolidayWork: false }], startTime: '09:00', endTime: '18:00', isHolidayWork: false, custName: '', custPhone: '', memo: '', operationType: '공공예약', customPay: 0, isCancelled: false, isUnavailable: false, isSingleDriver: false };
+                    n.reserved[vId] = { km: 0, duration: 1, destination: '', dailyTimes: [{ startTime: '09:00', endTime: '18:00', isHolidayWork: false }], startTime: '09:00', endTime: '18:00', isHolidayWork: false, custName: '', custPhone: '', memo: '', operationType: '공공예약', customPay: 0, isCancelled: false, isUnavailable: false, isSingleDriver: false, isEmergency: false };
                 }
                 handleSaveDay(n);
             };
@@ -795,10 +879,12 @@
                 setModal({ type: null });
             };
 
+            // 작성자(author) 정보를 추가로 저장하도록 기능 업데이트
             const addMaintenanceLog = async (vehicleId, content, dateStr) => {
                 if (!content.trim()) return;
                 const logDate = dateStr || getTodayStr();
-                const newLog = { id: Date.now().toString(), vehicleId, content: content.trim(), date: logDate, isCompleted: false };
+                const authorEmail = (ENABLE_LOGIN_SYSTEM && user && user.email) ? user.email.split('@')[0] : '익명'; // 작성자 아이디 추출
+                const newLog = { id: Date.now().toString(), vehicleId, content: content.trim(), date: logDate, isCompleted: false, author: authorEmail };
                 const newLogs = [newLog, ...maintenanceLogs];
                 await db.doc(`artifacts/${APP_ID}/public/data/settings/maintenance`).set({ logs: newLogs });
             };
@@ -872,7 +958,7 @@
                                                 }
                                                 
                                                 if (!vehicleGroups[item.vehicle.id]) {
-                                                    vehicleGroups[item.vehicle.id] = { name: item.vehicle.name, drivers: [], color: colorClass, isUnavailable: item.info.isUnavailable, isCancelled: item.info.isCancelled, duration: duration, rawDuration: rawDuration, operationType: item.info.operationType };
+                                                    vehicleGroups[item.vehicle.id] = { name: item.vehicle.name, drivers: [], color: colorClass, isUnavailable: item.info.isUnavailable, isCancelled: item.info.isCancelled, isEmergency: item.info.isEmergency, duration: duration, rawDuration: rawDuration, operationType: item.info.operationType };
                                                 }
                                                 item.slots.forEach(slot => {
                                                     if(slot && !slot.isExcluded && slot.nm) {
@@ -903,19 +989,21 @@
                                                     {d} {holidayName && <span className={`${holidayTextSize} ml-1 font-normal text-red-500 opacity-80 break-keep`}>{holidayName}</span>}
                                                 </span>
                                             </div>
+                                            
+                                            {/* 달력 일정 알림 렌더링에 작성자 표시 기능 추가 */}
                                             {dayData.dailyMemo && (
-                                                <div className="w-full mt-0.5 p-1 bg-rose-50 border border-rose-200 rounded text-rose-600 text-[10px] font-bold leading-tight shadow-sm break-keep whitespace-normal">🔔 {dayData.dailyMemo}</div>
+                                                <div className="w-full mt-0.5 p-1 bg-rose-50 border border-rose-200 rounded text-rose-600 text-[10px] font-bold leading-tight shadow-sm break-keep whitespace-normal">
+                                                    🔔 {dayData.dailyMemo}
+                                                    {dayData.memoAuthor && dayData.memoAuthor !== '익명' && <span className="block text-[8px] text-rose-400 mt-0.5 opacity-80 text-right">-{dayData.memoAuthor.split('@')[0]}</span>}
+                                                </div>
                                             )}
+
                                             <div className="w-full space-y-1 overflow-hidden mt-1">
                                                 {Object.values(vehicleGroups).map((group, gIdx) => (
                                                     <div key={gIdx} className={`${groupTextSize} rounded truncate text-left whitespace-normal break-keep ${group.color} shadow-sm`}>
                                                         {group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-gray-500 rounded">취소</span>}
-                                                        
-                                                        {/* 서울 배지 추가 */}
-                                                        {group.rawDuration === 'seoul' && !group.isCancelled && (
-                                                            <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-sky-500 rounded">서울</span>
-                                                        )}
-
+                                                        {group.isEmergency && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-orange-500 rounded">긴급</span>}
+                                                        {group.rawDuration === 'seoul' && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-sky-500 rounded">서울</span>}
                                                         {group.rawDuration === 'etc' && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-purple-500 rounded">기타</span>}
                                                         {group.duration > 1 && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-red-500 rounded">{group.duration - 1}박</span>}
                                                         {(group.operationType === '공공예약' && !['grave', 'picnic', 'etc', 'seoul'].includes(group.rawDuration)) && !group.isCancelled && <span className="inline-flex items-center justify-center px-1.5 mr-1 text-[9px] font-black leading-none text-white bg-indigo-500 rounded">공공</span>}
@@ -946,7 +1034,61 @@
                 );
             };
 
-            if (isLoading) return <div className="flex flex-col h-screen items-center justify-center"><div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div><p className="mt-4 font-bold text-slate-500">배차 시스템 로드 중...</p></div>;
+            // 인증 로딩 처리 (로그인 시스템 활성화 시에만 화면 가림)
+            if (ENABLE_LOGIN_SYSTEM && !isAuthReady) {
+                return (
+                    <div className="flex flex-col h-screen items-center justify-center bg-slate-100">
+                        <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                        <p className="mt-4 font-bold text-slate-500">보안 환경 확인 중...</p>
+                    </div>
+                );
+            }
+
+            // 로그인 장벽 (로그인 시스템이 켜져있고, 유저가 없거나 익명 유저일 때만 로그인 화면 표시)
+            if (ENABLE_LOGIN_SYSTEM && (!user || user.isAnonymous)) {
+                return (
+                    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans">
+                        <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md animate-[fadeIn_0.3s_ease-out]">
+                            <div className="text-center mb-8">
+                                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-blue-100">
+                                    <Icons.AccessibleBus className="text-3xl" />
+                                </div>
+                                <h1 className="text-2xl font-black text-slate-800">차량 배차 시스템</h1>
+                                <p className="text-slate-500 mt-2 text-sm font-bold">{isLoginMode ? '담당자 계정으로 로그인하세요' : '새 담당자 계정을 생성하세요'}</p>
+                            </div>
+                            
+                            {authError && (
+                                <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-xs font-bold text-center">
+                                    {authError}
+                                </div>
+                            )}
+
+                            <form onSubmit={handleAuthSubmit} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">이메일 계정</label>
+                                    <input type="email" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full border-2 border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 transition-colors font-bold text-sm bg-slate-50 focus:bg-white" placeholder="admin@example.com" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">비밀번호</label>
+                                    <input type="password" value={password} onChange={e=>setPassword(e.target.value)} required minLength={6} className="w-full border-2 border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 transition-colors font-bold text-sm bg-slate-50 focus:bg-white" placeholder="******" />
+                                </div>
+                                <button type="submit" disabled={authProcessing} className={`w-full text-white font-bold py-3.5 rounded-xl transition-colors shadow-md mt-2 flex justify-center items-center gap-2 disabled:opacity-70 ${isLoginMode ? 'bg-slate-800 hover:bg-slate-900' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                                    {authProcessing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : (isLoginMode ? '안전하게 접속하기 (로그인)' : '새 관리자 계정 만들기 (가입)')}
+                                </button>
+                            </form>
+
+                            <div className="mt-6 text-center pt-4 border-t border-slate-200">
+                                <p className="text-xs text-slate-500 mb-2">{isLoginMode ? '아직 계정이 없으신가요?' : '이미 계정이 있으신가요?'}</p>
+                                <button type="button" onClick={() => { setIsLoginMode(!isLoginMode); setAuthError(''); setEmail(''); setPassword(''); }} className={`w-full py-3 rounded-xl text-sm font-bold border transition-colors ${isLoginMode ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'}`}>
+                                    {isLoginMode ? '새 관리자 계정 생성 (회원가입)' : '기존 계정으로 로그인하기'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (isLoading) return <div className="flex flex-col h-screen items-center justify-center bg-slate-100"><div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div><p className="mt-4 font-bold text-slate-500">배차 시스템 로드 중...</p></div>;
 
             const currentOffDrivers = driverNames.filter((nm, i) => nm && !currentDayData.driverStatus[i]);
             const currentOndutyDrivers = driverNames.filter((nm, i) => nm && currentDayData.ondutyStatus && currentDayData.ondutyStatus[i]);
@@ -985,9 +1127,14 @@
                             <h1 className="text-xl font-extrabold text-blue-600 flex items-center gap-2">
                                 <Icons.AccessibleBus className="w-6 h-6"/> 배차관리
                             </h1>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 mt-1">
                                 <p className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> 실시간 접속중</p>
-                                {autoLinked && <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold animate-bounce transition-all flex items-center gap-1"><Icons.Link className="w-3 h-3"/>전일 데이터 연동됨</span>}
+                                {ENABLE_LOGIN_SYSTEM && user && !user.isAnonymous && (
+                                    <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-bold ml-1">{user.email}</span>
+                                )}
+                                {!ENABLE_LOGIN_SYSTEM && (
+                                    <span className="text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-600 px-2 py-0.5 rounded-full font-bold ml-1">자유 입력 모드</span>
+                                )}
                             </div>
                         </div>
                         <div className="flex gap-2">
@@ -995,11 +1142,16 @@
                             <button onClick={() => { setModalDate(selectedDateStr); setModal({ type: 'workLog' }); }} className="bg-sky-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-sky-600 transition flex items-center gap-1"><Icons.ClipboardList className="w-3 h-3"/>업무</button>
                             <button onClick={() => { setStatsYear(viewDate.getFullYear()); setStatsMonth(viewDate.getMonth()); setModal({ type: 'stats' }); }} className="bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-emerald-600 transition flex items-center gap-1"><Icons.PieChart className="w-3 h-3"/>정산</button>
                             <button onClick={resetAll} className="bg-slate-100 text-slate-500 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-red-50 hover:text-red-500 transition"><Icons.RotateCw className="w-3 h-3"/></button>
+                            {ENABLE_LOGIN_SYSTEM && (
+                                <button onClick={handleLogout} className="bg-slate-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-slate-700 transition flex items-center gap-1 ml-2">
+                                    <Icons.LogOut className="w-3 h-3"/> 로그아웃
+                                </button>
+                            )}
                         </div>
                     </header>
 
                     <div className="p-4 md:p-6 flex flex-col lg:flex-row gap-6 relative">
-                        <div className="flex-shrink-0 space-y-6" style={{ width: isDesktop ? leftPanelWidth : '100%' }}>
+                        <div className="flex-shrink-0 space-y-6" style={{ width: isDesktop ? leftPanelWidth : '100%', transition: 'width 0.3s ease' }}>
                             <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
                                 <div className="flex justify-between items-center mb-4 font-bold">
                                     <h2 className="text-lg">{viewDate.getFullYear()}년 {viewDate.getMonth() + 1}월</h2>
@@ -1024,15 +1176,17 @@
                                         <div className="flex-1 pr-6">
                                             <h4 className="text-xs font-extrabold text-rose-600 mb-1">일정 알림</h4>
                                             <p className="text-sm font-bold text-rose-800 whitespace-pre-wrap leading-snug">{currentDayData.dailyMemo}</p>
+                                            {/* 알림에 작성자 표시 기능 추가 */}
+                                            {currentDayData.memoAuthor && currentDayData.memoAuthor !== '익명' && <p className="text-[10px] text-rose-500 mt-1 opacity-80">작성: {currentDayData.memoAuthor.split('@')[0]}</p>}
                                         </div>
                                         <button 
                                             type="button"
                                             onClick={async () => {
                                                 if(confirm('알림을 삭제하시겠습니까?')) {
                                                     try {
-                                                        await db.doc(`artifacts/${APP_ID}/public/data/calendar/${selectedDateStr}`).set({ dailyMemo: firebase.firestore.FieldValue.delete() }, { merge: true });
+                                                        await db.doc(`artifacts/${APP_ID}/public/data/calendar/${selectedDateStr}`).set({ dailyMemo: firebase.firestore.FieldValue.delete(), memoAuthor: firebase.firestore.FieldValue.delete() }, { merge: true });
                                                     } catch (error) {
-                                                        const n = { ...currentDayData }; delete n.dailyMemo; handleSaveDay(n);
+                                                        const n = { ...currentDayData }; delete n.dailyMemo; delete n.memoAuthor; handleSaveDay(n);
                                                     }
                                                 }
                                             }} 
@@ -1064,6 +1218,7 @@
                                                     <div className="text-right">
                                                         {item.info.isCancelled && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold mr-1">취소됨</span>}
                                                         {item.info.isUnavailable && <span className="text-[10px] bg-purple-100 text-purple-600 px-2 py-0.5 rounded font-bold mr-1">운전원변경</span>}
+                                                        {item.info.isEmergency && <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded font-bold mr-1">긴급</span>}
                                                         <span className="text-xs bg-white border border-slate-200 px-2.5 py-1 rounded-md text-slate-600 shadow-sm font-bold">
                                                             {item.info.duration === 'seoul' ? '서울' : (item.info.duration === 'etc' ? '기타' : (item.info.duration > 1 ? (item.info.duration-1)+'박' : '당일'))}
                                                         </span>
@@ -1084,8 +1239,8 @@
                                                         {item.slots.map((d, sIdx) => {
                                                             const isAssigned = d && !d.isExcluded && d.nm;
                                                             return isAssigned ? (
-                                                                <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className={`flex-grow py-2.5 rounded-xl text-xs font-bold border flex items-center justify-center gap-1 shadow-sm transition-all ${d.type==='manual' ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'}`}>
-                                                                    {d.nm} <span className="text-[10px] opacity-60 ml-1 font-normal">({d.rank}순위)</span> {d.type==='manual' && <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}
+                                                                <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className={`flex-grow py-2.5 rounded-xl text-xs font-bold border flex items-center justify-center gap-1 shadow-sm transition-all ${(d.type==='manual' || d.type==='emergency') ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'}`}>
+                                                                    {d.nm} <span className="text-[10px] opacity-60 ml-1 font-normal">({d.rank}순위)</span> {(d.type==='manual' || d.type==='emergency') && <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}
                                                                 </button>
                                                             ) : (
                                                                 <button key={sIdx} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className="flex-grow py-2.5 bg-red-50 border border-red-100 rounded-xl text-xs text-red-500 font-bold animate-pulse hover:bg-red-100">공석 배정하기</button>
@@ -1093,6 +1248,7 @@
                                                         })}
                                                     </div>
                                                 )}
+                                                
                                                 {item.info.isUnavailable && (
                                                     <div className="text-center py-2 mt-2 text-purple-600 text-xs font-bold bg-purple-50 rounded-xl border border-purple-100">운전원변경 (자동 배차가 제외되었습니다)</div>
                                                 )}
@@ -1146,8 +1302,12 @@
                                         return (
                                             <div key={i} className={`flex items-center justify-between p-2.5 rounded-lg border text-sm font-bold transition ${currentDayData.driverStatus[i] ? 'bg-white border-blue-100' : 'bg-slate-50 border-slate-200'}`}>
                                                 <div className="flex items-center gap-2 flex-grow">
-                                                    <button onClick={() => toggleDriverStatus(i)} className={`px-2 py-1 rounded-md text-[10px] w-10 flex-shrink-0 transition-colors ${currentDayData.driverStatus[i] ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>{currentDayData.driverStatus[i] ? '출근' : '휴무'}</button>
-                                                    <button onClick={() => toggleOndutyStatus(i)} className={`px-2 py-1 rounded-md text-[10px] w-10 flex-shrink-0 transition-colors ${currentDayData.ondutyStatus?.[i] ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>당직</button>
+                                                    <button onClick={() => toggleDriverStatus(i)} className={`px-2 py-1 rounded-md text-[10px] w-10 flex-shrink-0 transition-colors ${currentDayData.driverStatus[i] ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>
+                                                        {currentDayData.driverStatus[i] ? '출근' : '휴무'}
+                                                    </button>
+                                                    <button onClick={() => toggleOndutyStatus(i)} className={`px-2 py-1 rounded-md text-[10px] w-10 flex-shrink-0 transition-colors ${currentDayData.ondutyStatus?.[i] ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>
+                                                        당직
+                                                    </button>
                                                     <span className={`px-2 font-extrabold ${!currentDayData.driverStatus[i] ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'}`}>{nm}</span>
                                                 </div>
                                                 <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-1 rounded-md font-black">{currentDayData.driverRanks[i]}순위</span>
@@ -1177,6 +1337,7 @@
                                         </div>
                                     </div>
                                 </div>
+                                
                                 <div className="flex flex-wrap sm:flex-nowrap gap-2 mb-3">
                                     <input type="date" id="maintDateInput" defaultValue={getTodayStr()} className="text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold w-[115px] shrink-0" />
                                     <select id="maintVehicleSelect" className="text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold w-[80px] shrink-0">
@@ -1185,6 +1346,7 @@
                                     <input type="text" id="maintContentInput" className="flex-1 w-full min-w-[150px] text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold" placeholder="정비/점검 내역 입력" onKeyDown={(e) => { if(e.key==='Enter') { const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, e.target.value, dStr); e.target.value=''; } }} />
                                     <button onClick={() => { const el = document.getElementById('maintContentInput'); const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, el.value, dStr); el.value=''; }} className="bg-slate-800 text-white w-8 h-8 rounded-lg flex items-center justify-center shrink-0"><Icons.Plus className="w-4 h-4"/></button>
                                 </div>
+                                
                                 <div className="text-[9px] text-slate-400 font-bold mb-2 text-right">월별 최신 15건 표시</div>
                                 <div className="space-y-4 h-[500px] overflow-y-auto pr-1 relative">
                                     {Object.keys(groupedMaintenanceLogs).length === 0 ? (
@@ -1202,12 +1364,14 @@
                                                         return (
                                                             <div key={log.id} className={`flex items-start justify-between p-2.5 rounded-lg border text-xs transition ${log.isCompleted ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-rose-200 shadow-sm'}`}>
                                                                 <div className="flex items-start gap-2 flex-grow">
-                                                                    <input type="checkbox" checked={log.isCompleted} onChange={() => toggleMaintenanceLog(log.id)} className="mt-0.5 w-4 h-4 text-blue-600 rounded cursor-pointer shrink-0"/>
+                                                                    <input type="checkbox" checked={log.isCompleted} onChange={() => toggleMaintenanceLog(log.id)} className="mt-0.5 w-4 h-4 text-blue-600 rounded cursor-pointer shrink-0" />
                                                                     <div className={`flex flex-col ${log.isCompleted ? 'line-through text-slate-400' : 'text-slate-700'}`}>
                                                                         <div className="font-extrabold text-blue-600 mb-0.5 flex items-center gap-1">
                                                                             {vehicle.name} <span className="text-[9px] text-slate-400 font-normal">{log.date}</span>
                                                                         </div>
                                                                         <span className="font-bold leading-tight whitespace-pre-wrap break-keep">{log.content}</span>
+                                                                        {/* 정비게시판 작성자 표시 기능 추가 */}
+                                                                        {log.author && log.author !== '익명' && <span className="text-[9px] text-slate-400 mt-1 block font-normal">작성자: {log.author}</span>}
                                                                     </div>
                                                                 </div>
                                                                 <button onClick={() => { if(confirm('삭제하시겠습니까?')) deleteMaintenanceLog(log.id); }} className="text-red-200 hover:text-red-500 shrink-0 p-1"><Icons.Trash2 className="w-3 h-3"/></button>
@@ -1232,7 +1396,7 @@
                                     <Icons.Money className="w-4 h-4"/> 관외비 설정
                                 </button>
                                 <button onClick={() => setModal({ type: 'data' })} className="bg-white border border-slate-200 text-slate-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2">
-                                    <Icons.Database className="w-4 h-4"/> 데이터 백업
+                                    <Icons.Database className="w-4 h-4"/> 데이터 및 백업
                                 </button>
                             </div>
                         </div>
@@ -1298,6 +1462,10 @@
                                                                     <span className="text-xs text-blue-600 font-bold">1인 배정</span>
                                                                 </label>
                                                             )}
+                                                            <label className="flex items-center gap-2">
+                                                                <input type="checkbox" checked={info.isEmergency || false} onChange={(e) => updateVehicleInfo(v.id, 'isEmergency', e.target.checked)} className="w-4 h-4 text-orange-500 rounded"/>
+                                                                <span className="text-xs text-orange-600 font-bold">긴급 (순번제외)</span>
+                                                            </label>
                                                         </div>
 
                                                         <div className="grid grid-cols-2 gap-2">
@@ -1459,7 +1627,10 @@
                                         const textVal = document.getElementById('notiTextInput').value;
                                         if(!dateVal) { alert('날짜를 선택해주세요.'); return; }
                                         try {
-                                            await db.doc(`artifacts/${APP_ID}/public/data/calendar/${dateVal}`).set({ dailyMemo: textVal }, { merge: true });
+                                            await db.doc(`artifacts/${APP_ID}/public/data/calendar/${dateVal}`).set({ 
+                                                dailyMemo: textVal,
+                                                memoAuthor: (ENABLE_LOGIN_SYSTEM && user && user.email) ? user.email : '익명'
+                                            }, { merge: true });
                                             setModal({ type: null });
                                         } catch (err) { alert("저장 중 오류가 발생했습니다."); }
                                     }} className="w-full bg-rose-500 text-white py-3 rounded-xl font-bold mt-2 hover:bg-rose-600 transition flex items-center justify-center gap-2">
@@ -1494,6 +1665,7 @@
                                         const pM = txt.match(/\d{2,3}-\d{3,4}-\d{4}/); if(pM) pData.custPhone = pM[0];
                                         const nM = txt.match(/(?:성함|예약자|담당자)[:\s]+([가-힣]{2,4})/) || txt.match(/([가-힣]{2,4})\s?(?:님|과장|차장|부장)/);
                                         if(nM) pData.custName = nM[1];
+                                        
                                         applyKakaoData(modal.data, pData);
                                     }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">분석 및 적용</button>
                                 </div>
@@ -1509,52 +1681,30 @@
                                     <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
                                 </div>
                                 <div className="p-6 space-y-4">
-                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">당일 운행 수당</label><input type="number" id="payDayInput" defaultValue={paySettings.day} className="w-full border rounded-lg p-2 text-sm font-bold"/></div>
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 mb-1">숙박 운행 (1일당 수당)</label><input type="number" id="paySleepInput" defaultValue={paySettings.sleep} className="w-full border rounded-lg p-2 text-sm font-bold"/>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">당일 운행 수당</label>
+                                        <input type="number" id="payDayInput" defaultValue={paySettings.day} className="w-full border rounded-lg p-2 text-sm font-bold"/>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">숙박 운행 (1일당 수당)</label>
+                                        <input type="number" id="paySleepInput" defaultValue={paySettings.sleep} className="w-full border rounded-lg p-2 text-sm font-bold"/>
                                         <p className="text-[10px] text-slate-400 mt-1">* 1박(2일)은 위 금액 × 2, 2박(3일)은 위 금액 × 3으로 계산됩니다.</p>
                                     </div>
-                                    <div className="border-t border-slate-200 pt-4"><label className="block text-xs font-bold text-slate-500 mb-1">성묘 지원 수당</label><input type="number" id="payGraveInput" defaultValue={paySettings.grave} className="w-full border rounded-lg p-2 text-sm font-bold"/></div>
-                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">나들이 수당</label><input type="number" id="payPicnicInput" defaultValue={paySettings.picnic} className="w-full border rounded-lg p-2 text-sm font-bold"/></div>
-                                    <button onClick={() => {
-                                        updatePaySettings(document.getElementById('payDayInput').value, document.getElementById('paySleepInput').value, document.getElementById('payGraveInput').value, document.getElementById('payPicnicInput').value);
-                                    }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold mt-2">저장하기</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {modal.type === 'drivers' && (
-                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-                                <div className="p-4 border-b font-bold flex justify-between bg-orange-50 text-orange-700 shrink-0">
-                                    <h3 className="flex items-center gap-2"><Icons.Users className="w-4 h-4"/>운전자 관리 및 순번</h3>
-                                    <button onClick={() => setModal({ type: null })} className="hover:text-orange-900"><Icons.X className="w-4 h-4"/></button>
-                                </div>
-                                <div className="p-4 shrink-0 bg-white border-b flex flex-col gap-3">
-                                    <div className="flex gap-2 bg-slate-50 p-2 rounded-xl">
-                                        <input type="text" id="newDriverName" placeholder="새 운전자 이름" className="w-full text-xs border rounded p-2 outline-none focus:ring-2 focus:ring-orange-400 font-bold" onKeyDown={(e) => { if(e.key==='Enter') { addDriver(e.target.value); e.target.value=''; }}}/>
-                                        <button onClick={() => { const el = document.getElementById('newDriverName'); addDriver(el.value); el.value=''; }} className="bg-slate-800 text-white w-12 rounded text-xs shrink-0 font-bold">등록</button>
+                                    <div className="border-t border-slate-200 pt-4">
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">성묘 지원 수당</label>
+                                        <input type="number" id="payGraveInput" defaultValue={paySettings.grave} className="w-full border rounded-lg p-2 text-sm font-bold"/>
                                     </div>
-                                    <button onClick={sortDriversByRank} className="w-full bg-blue-50 text-blue-600 text-xs font-bold py-2 rounded-lg hover:bg-blue-100 transition-colors border border-blue-100 shadow-sm">현재 일일 순번대로 목록 정렬</button>
-                                </div>
-                                <div className="p-4 overflow-y-auto flex-grow bg-slate-50 space-y-2">
-                                    {driverNames.map((nm, i) => {
-                                        const isActive = nm !== "" && nm !== undefined;
-                                        return (
-                                            <div key={i} className={`flex justify-between items-center p-2.5 border border-slate-200 rounded-lg text-sm font-bold bg-white shadow-sm transition-all hover:border-orange-200 gap-2 ${!isActive ? 'opacity-50 grayscale' : ''}`}>
-                                                <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); if(isActive) deactivateDriver(i); else updateDriverName(i, "복구됨"); }} className={`shrink-0 p-1.5 rounded-md transition-colors flex items-center justify-center w-8 h-8 shadow-sm ${isActive ? 'text-white bg-emerald-500 hover:bg-emerald-600' : 'text-slate-400 bg-slate-200 hover:bg-slate-300'}`} title={isActive ? "목록에서 숨기기" : "다시 활성화"}>
-                                                    <Icons.UserCheck className="w-4 h-4 pointer-events-none"/>
-                                                </button>
-                                                <AutoSaveInput type="number" value={currentDayData.driverRanks[i] || 0} onSave={(val) => updateDriverRank(i, val)} className="w-12 text-center border border-slate-200 rounded bg-slate-50 py-1.5" disabled={!isActive} />
-                                                <AutoSaveInput value={nm || ""} onSave={(val) => updateDriverName(i, val)} className={`w-full outline-none bg-transparent focus:bg-slate-50 rounded px-1 transition-colors font-extrabold ${!isActive ? 'line-through text-slate-400' : 'text-slate-700'}`} placeholder={!isActive ? "비활성됨" : "이름 입력"} disabled={!isActive} />
-                                                <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeDriver(i); }} className="text-red-400 hover:text-red-600 hover:bg-red-50 shrink-0 p-1.5 rounded transition-colors flex items-center justify-center" title="완전히 삭제">
-                                                    <Icons.Trash2 className="w-4 h-4 pointer-events-none"/>
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                    {driverNames.length === 0 && <div className="text-center text-slate-400 text-xs py-10">등록된 운전자가 없습니다.</div>}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">나들이 수당</label>
+                                        <input type="number" id="payPicnicInput" defaultValue={paySettings.picnic} className="w-full border rounded-lg p-2 text-sm font-bold"/>
+                                    </div>
+                                    <button onClick={() => {
+                                        const day = document.getElementById('payDayInput').value;
+                                        const sleep = document.getElementById('paySleepInput').value;
+                                        const grave = document.getElementById('payGraveInput').value;
+                                        const picnic = document.getElementById('payPicnicInput').value;
+                                        updatePaySettings(day, sleep, grave, picnic);
+                                    }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold mt-2">저장하기</button>
                                 </div>
                             </div>
                         </div>
@@ -1577,7 +1727,9 @@
                                         </select>
                                         <button onClick={()=>{
                                             const n=document.getElementById('addVName').value, p=document.getElementById('addVPlate').value, t=document.getElementById('addVType').value;
-                                            if(!n) return; addVehicle(n,p,t); document.getElementById('addVName').value=''; document.getElementById('addVPlate').value='';
+                                            if(!n) return; 
+                                            addVehicle(n,p,t);
+                                            document.getElementById('addVName').value=''; document.getElementById('addVPlate').value='';
                                         }} className="bg-slate-800 text-white w-12 rounded text-xs shrink-0">등록</button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 max-h-[400px] overflow-y-auto">
@@ -1585,7 +1737,12 @@
                                             <div key={v.id} className="flex justify-between items-center p-3 border rounded-lg text-sm font-bold bg-white">
                                                 <div className="flex flex-col w-full mr-2">
                                                     <span>{v.name}</span>
-                                                    <AutoSaveInput value={v.plate} onSave={(val) => updateVehiclePlate(v.id, val)} placeholder="번호 입력" className="text-[10px] text-slate-400 font-normal outline-none bg-transparent hover:bg-slate-50 focus:bg-slate-50 rounded px-1 -ml-1 w-full transition-colors" />
+                                                    <AutoSaveInput 
+                                                        value={v.plate} 
+                                                        onSave={(val) => updateVehiclePlate(v.id, val)} 
+                                                        placeholder="번호 입력" 
+                                                        className="text-[10px] text-slate-400 font-normal outline-none bg-transparent hover:bg-slate-50 focus:bg-slate-50 rounded px-1 -ml-1 w-full transition-colors"
+                                                    />
                                                 </div>
                                                 <button onClick={() => removeVehicle(v.id)} className="text-red-300 hover:text-red-500 shrink-0"><Icons.Trash2 className="w-4 h-4"/></button>
                                             </div>
@@ -1595,6 +1752,7 @@
                             </div>
                         </div>
                     )}
+
                     {modal.type === 'replace' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl">
@@ -1619,6 +1777,7 @@
                             </div>
                         </div>
                     )}
+
                     {modal.type === 'data' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl">
@@ -1636,11 +1795,14 @@
                                             <Icons.Upload className="w-5 h-5"/> 백업 파일로 복원
                                         </button>
                                     </div>
-                                    <p className="text-xs text-slate-400 text-center mt-2">* 백업 파일(.json)을 선택하면 현재 데이터가 덮어씌워집니다.</p>
+                                    <p className="text-xs text-slate-400 text-center mt-2">
+                                        * 백업 파일(.json)을 선택하면 현재 데이터가 덮어씌워집니다.
+                                    </p>
                                 </div>
                             </div>
                         </div>
                     )}
+
                     {modal.type === 'stats' && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-[95vw] lg:max-w-7xl rounded-2xl overflow-hidden shadow-2xl h-[85vh] flex flex-col">
@@ -1736,7 +1898,7 @@
                                                                             <td className={`text-center ${s.typeCounts['기타'] > 0 ? 'text-purple-500' : 'text-slate-300'}`}>{s.typeCounts['기타'] || '-'}</td>
                                                                             <td className="text-right text-blue-600 font-black border-l border-slate-100">{s.tA.toFixed(3)}</td>
                                                                             <td className="text-right text-emerald-600 font-black">{s.tM.toLocaleString()}</td>
-                                                                            <td className="text-right font-black bg-blue-50/50 text-blue-800 pr-4 border-l border-slate-100">{yearlyStatsAll[i].totalMoney.toLocaleString()}</td>
+                                                                            <td className="text-right font-black bg-blue-50/50 text-blue-800 pr-4 border-l border-slate-100">{validYearlyStatsAll[i] ? validYearlyStatsAll[i].totalMoney.toLocaleString() : 0}</td>
                                                                         </tr>
                                                                     );
                                                                 })}
