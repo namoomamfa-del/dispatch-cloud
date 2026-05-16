@@ -217,10 +217,21 @@
         const App = () => {
             // =========================================================================
             // [중요 시스템 스위치]
-            const ENABLE_LOGIN_SYSTEM = false;
-            const ENABLE_ADMIN_PASSWORD_MODE = true;
-            const ENABLE_DISPATCH_LOGS_BOARD = false;
-            const ENABLE_PAST_DISPATCH_LOGS_BOARD = true; // 단기 변동사항 게시판 (D+0 ~ D+3)
+            // 1. ENABLE_LOGIN_SYSTEM: Firebase 이메일/비밀번호 로그인 화면 활성화 여부 
+            //    (false로 설정 시 로그인 화면 없이 누구나 접속 가능한 익명 로그인 모드로 작동합니다)
+            const ENABLE_LOGIN_SYSTEM = false; 
+
+            // 2. ENABLE_ADMIN_PASSWORD_MODE: 읽기 전용 / 관리자 모드 분리 기능
+            //    (true로 설정 시 일반 접속자는 열람 및 일일 상태 변경만 가능하며, 예약 수정은 우측 상단의 '관리자 로그인(기본: 0000)' 후 가능합니다)
+            const ENABLE_ADMIN_PASSWORD_MODE = true; 
+
+            // 3. ENABLE_DISPATCH_LOGS_BOARD: 미래 배차 인원 변동사항 게시판 활성화 여부
+            //    (true로 설정 시 내일(D+1)부터 10일(D+10) 후까지의 배차 변경 내역을 기록하는 게시판이 나타납니다)
+            const ENABLE_DISPATCH_LOGS_BOARD = false; 
+
+            // 4. ENABLE_PAST_DISPATCH_LOGS_BOARD: 단기 배차 인원 변동사항 게시판 활성화 여부
+            //    (true로 설정 시 당일(D+0)부터 3일(D+3) 후까지의 단기 배차 변경 내역을 기록하는 게시판이 나타납니다)
+            const ENABLE_PAST_DISPATCH_LOGS_BOARD = true; 
             // =========================================================================
 
             const [isAdmin, setIsAdmin] = useState(localStorage.getItem('isAdmin') === 'true');
@@ -299,12 +310,11 @@
                 const maxWidth = window.innerWidth * 0.8;
                 setLeftPanelWidth(Math.max(280, Math.min(maxWidth, e.clientX - 24))); 
             }, []);
-
             useEffect(() => { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }; }, [handleMouseMove]);
 
             useEffect(() => {
                 if (!ENABLE_LOGIN_SYSTEM) {
-                    const initAnonymousAuth = async () => { try { if (!auth.currentUser) await auth.signInAnonymously(); } catch (e) { console.error("익명 로그인 에러:", e); } };
+                    const initAnonymousAuth = async () => { try { if (!auth.currentUser) await auth.signInAnonymously(); } catch (e) { console.error(e); } };
                     initAnonymousAuth();
                 }
                 const unsubscribe = auth.onAuthStateChanged((u) => { setUser(u); setIsAuthReady(true); });
@@ -326,29 +336,24 @@
                     }
                     setIsLoading(false);
                 });
-                
                 const unsubCalendar = db.collection(`artifacts/${APP_ID}/public/data/calendar`).onSnapshot((snapshot) => {
                     const newSchedule = {}; snapshot.forEach((doc) => { newSchedule[doc.id] = doc.data(); }); setScheduleData(newSchedule);
                 });
-                
                 const unsubMaintenance = db.doc(`artifacts/${APP_ID}/public/data/settings/maintenance`).onSnapshot((docSnap) => {
                     if (docSnap.exists) setMaintenanceLogs(docSnap.data().logs || []); else setMaintenanceLogs([]);
                 });
-
                 let unsubDispatchLogs = () => {};
                 if (ENABLE_DISPATCH_LOGS_BOARD) {
                     unsubDispatchLogs = db.doc(`artifacts/${APP_ID}/public/data/settings/dispatchLogs`).onSnapshot((docSnap) => {
                         if (docSnap.exists) setDispatchLogs(docSnap.data().logs || []); else setDispatchLogs([]);
                     });
                 }
-                
                 let unsubPastDispatchLogs = () => {};
                 if (ENABLE_PAST_DISPATCH_LOGS_BOARD) {
                     unsubPastDispatchLogs = db.doc(`artifacts/${APP_ID}/public/data/settings/pastDispatchLogs`).onSnapshot((docSnap) => {
                         if (docSnap.exists) setPastDispatchLogs(docSnap.data().logs || []); else setPastDispatchLogs([]);
                     });
                 }
-                
                 return () => { unsubMaster(); unsubCalendar(); unsubMaintenance(); unsubDispatchLogs(); unsubPastDispatchLogs(); };
             }, [user]);
 
@@ -572,7 +577,7 @@
                 if (allScheduleWithRanks[d2]) allScheduleWithRanks[d2].dispatchResult.forEach(r => { if (r.info.duration >= 3 && !r.info.isCancelled) r.slots.forEach(s => s && !s.isExcluded && excludedIds.add(s.id)); });
 
                 const rawDayData = scheduleData[dateStr] || {};
-                return { reserved: rawDayData.reserved || {}, driverStatus: adaptStatus(rawDayData.driverStatus, true, n), ondutyStatus: adaptStatus(rawDayData.ondutyStatus, false, n), driverRanks: currentRanks, overrides: rawDayData.overrides || {}, isHoliday: isPublicHoliday(dateStr), dailyMemo: rawDayData.dailyMemo || "", workLogs: rawDayData.workLogs || {}, _excludedIds: excludedIds, dispatchResult: [] };
+                return { reserved: rawDayData.reserved || {}, driverStatus: adaptStatus(rawDayData.driverStatus, true, n), ondutyStatus: adaptStatus(rawDayData.ondutyStatus, false, n), driverRanks: currentRanks, overrides: rawDayData.overrides || {}, isHoliday: isPublicHoliday(dateStr), dailyMemo: rawDayData.dailyMemo || "", memoAuthor: rawDayData.memoAuthor || "", workLogs: rawDayData.workLogs || {}, _excludedIds: excludedIds, dispatchResult: [] };
             };
 
             const currentDayData = useMemo(() => { return { ...getCalculatedDayData(selectedDateStr) }; }, [selectedDateStr, allScheduleWithRanks]);
@@ -834,22 +839,6 @@
                 }
             };
             
-            const applyKakaoData = (vId, pData) => {
-                if(!isEditAllowed) return;
-                const n = { ...currentDayData, reserved: { ...currentDayData.reserved } };
-                if (n.reserved[vId]) { 
-                    const currentTimes = n.reserved[vId].dailyTimes || [{startTime: n.reserved[vId].startTime || '09:00', endTime: n.reserved[vId].endTime || '18:00', isHolidayWork: n.reserved[vId].isHolidayWork || false}];
-                    const updatedTimes = [...currentTimes];
-                    if (pData.startTime) updatedTimes[0].startTime = pData.startTime;
-                    if (pData.endTime) updatedTimes[0].endTime = pData.endTime;
-                    n.reserved[vId] = { ...n.reserved[vId], ...pData, dailyTimes: updatedTimes }; 
-                    if (pData.startTime) n.reserved[vId].startTime = pData.startTime;
-                    if (pData.endTime) n.reserved[vId].endTime = pData.endTime;
-                    handleSaveDay(n); 
-                }
-                setModal({ type: null });
-            };
-
             const addMaintenanceLog = async (vehicleId, content, dateStr) => {
                 if (!content.trim()) return;
                 const logDate = dateStr || getTodayStr();
@@ -1057,14 +1046,11 @@
 
                     <header className="sticky top-0 bg-white/90 backdrop-blur border-b z-50 px-4 py-3 flex justify-between items-center shadow-sm">
                         <div onClick={() => window.location.reload()} className="cursor-pointer hover:opacity-80 transition-opacity">
-                            <h1 className="text-xl font-extrabold text-blue-600 flex items-center gap-2">
-                                <Icons.AccessibleBus className="w-6 h-6"/> 배차관리
-                            </h1>
+                            <h1 className="text-xl font-extrabold text-blue-600 flex items-center gap-2"><Icons.AccessibleBus className="w-6 h-6"/> 배차관리</h1>
                             <div className="flex items-center gap-2 mt-1">
                                 <p className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> 실시간 접속중</p>
                                 {ENABLE_LOGIN_SYSTEM && user && !user.isAnonymous && <span className="text-[10px] bg-slate-100 border px-2 py-0.5 rounded-full font-bold ml-1">{user.email}</span>}
                                 {!ENABLE_LOGIN_SYSTEM && !ENABLE_ADMIN_PASSWORD_MODE && <span className="text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-600 px-2 py-0.5 rounded-full font-bold ml-1">자유 입력 모드</span>}
-                                {ENABLE_ADMIN_PASSWORD_MODE && isAdmin && <span className="text-[10px] bg-slate-800 text-white px-2 py-0.5 rounded-full font-bold ml-1">관리자 활성</span>}
                             </div>
                         </div>
                         <div className="flex gap-2">
@@ -1089,7 +1075,7 @@
                                 <div className="flex justify-between items-center mb-4 font-bold">
                                     <h2 className="text-lg">{viewDate.getFullYear()}년 {viewDate.getMonth() + 1}월</h2>
                                     <div className="flex gap-1 items-center">
-                                        <button onClick={() => setIsCalendarExpanded(true)} className="w-8 h-8 rounded-full hover:bg-blue-50 text-blue-600 mr-2 flex items-center justify-center"><Icons.Maximize className="w-4 h-4"/></button>
+                                        <button onClick={() => setIsCalendarExpanded(true)} className="w-8 h-8 rounded-full hover:bg-blue-50 text-blue-600 mr-2 flex items-center justify-center" title="확대보기"><Icons.Maximize className="w-4 h-4"/></button>
                                         <button onClick={() => moveMonth(-1)} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center"><Icons.ChevronLeft className="w-4 h-4"/></button>
                                         <button onClick={() => moveMonth(1)} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center"><Icons.ChevronRight className="w-4 h-4"/></button>
                                     </div>
@@ -1135,7 +1121,6 @@
                                                     </div>
                                                     <div className="text-right">
                                                         {item.info.isCancelled && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold mr-1">취소됨</span>}
-                                                        {item.info.isUnavailable && <span className="text-[10px] bg-purple-100 text-purple-600 px-2 py-0.5 rounded font-bold mr-1">운전원변경</span>}
                                                         {item.info.isEmergency && <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded font-bold mr-1">긴급</span>}
                                                         <span className="text-xs bg-white border border-slate-200 px-2.5 py-1 rounded-md text-slate-600 shadow-sm font-bold">
                                                             {item.info.duration === 'seoul' ? '서울' : (item.info.duration === 'etc' ? '기타' : (item.info.duration > 1 ? (item.info.duration-1)+'박' : '당일'))}
@@ -1184,39 +1169,6 @@
                                         );
                                     })}
                                     {getDispatchResult().length === 0 && <div className="text-center py-20 text-slate-400 text-sm font-medium italic">등록된 예약 내역이 없습니다.</div>}
-                                    
-                                    <div className="mt-6 pt-4 border-t border-slate-200">
-                                        <div className="flex items-center gap-2 mb-3 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                                            <Icons.UserX className="w-3 h-3"/> <span>당직 / 휴무 / 연박 인원</span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {currentOndutyDrivers.map((nm, i) => (<span key={`onduty-${i}`} className="px-2.5 py-1 rounded-md bg-orange-100 border border-orange-200 text-orange-700 text-xs font-bold">당직: {nm}</span>))}
-                                            {realCurrentOffDrivers.map((nm, i) => (<span key={`off-${i}`} className="px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold">휴무: {nm}</span>))}
-                                            {excludedDriversList.map((nm, i) => (<span key={`excl-${i}`} className="px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-rose-600 text-xs font-bold">연박: {nm}</span>))}
-                                            {currentOndutyDrivers.length === 0 && realCurrentOffDrivers.length === 0 && excludedDriversList.length === 0 && <span className="text-slate-400 text-xs pl-1">해당 인원 없음</span>}
-                                        </div>
-                                    </div>
-                                    
-                                    {Object.keys(currentDayData.workLogs || {}).length > 0 && (
-                                        <div className="mt-6 pt-4 border-t border-slate-200">
-                                            <div className="flex items-center gap-2 mb-3 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                                                <Icons.ClipboardList className="w-3 h-3"/> <span>개인별 업무일지</span>
-                                            </div>
-                                            <div className="flex flex-col gap-2">
-                                                {driverNames.map((nm, i) => {
-                                                    if (!nm) return null;
-                                                    const log = currentDayData.workLogs?.[i];
-                                                    if (!log) return null;
-                                                    return (
-                                                        <div key={`worklog-${i}`} className="flex items-start gap-3 bg-slate-50 border border-slate-100 rounded-lg p-2.5 text-sm">
-                                                            <span className="font-black text-sky-700 w-14 flex-shrink-0 pt-0.5">{nm}</span>
-                                                            <span className="text-slate-700 font-bold whitespace-pre-wrap break-keep">{log}</span>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
 
@@ -1242,106 +1194,56 @@
                                             </div>
                                         );
                                     })}
-                                    {driverNames.filter(n => n).length === 0 && <div className="text-center text-slate-400 text-xs py-10">등록된 운전자가 없습니다.</div>}
                                 </div>
                             </div>
 
                             <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
                                 <div className="flex justify-between items-center mb-4 font-bold flex-wrap gap-2">
                                     <h2 className="text-sm flex items-center gap-2"><Icons.Wrench className="text-slate-500 w-4 h-4"/> 차량정비게시판</h2>
-                                    <div className="flex items-center gap-2 flex-wrap justify-end">
-                                        <select value={maintSearchVehicle} onChange={(e) => setMaintSearchVehicle(e.target.value)} className="text-[10px] border rounded-lg p-1.5 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold">
-                                            <option value="">모든 차량</option>
-                                            {vehiclesList.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                                        </select>
-                                        <div className="flex items-center gap-1 bg-slate-50 rounded-lg border px-1 py-1">
-                                            <input type="date" value={maintStartDate} onChange={(e) => setMaintStartDate(e.target.value)} className="text-[10px] bg-transparent outline-none font-bold text-slate-600 w-[95px]"/>
-                                            <span className="text-slate-400 text-[10px]">~</span>
-                                            <input type="date" value={maintEndDate} onChange={(e) => setMaintEndDate(e.target.value)} className="text-[10px] bg-transparent outline-none font-bold text-slate-600 w-[95px]"/>
-                                        </div>
-                                        <div className="relative flex items-center">
-                                            <Icons.Search className="absolute left-2 w-3 h-3 text-slate-400" />
-                                            <input type="text" value={maintSearch} onChange={(e) => setMaintSearch(e.target.value)} placeholder="내역 검색" className="pl-6 pr-2 py-1.5 text-[10px] border rounded-lg outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 w-[100px] focus:w-[150px] transition-all font-bold" />
-                                        </div>
-                                    </div>
                                 </div>
-                                
                                 {isEditAllowed && (
                                     <div className="flex flex-wrap sm:flex-nowrap gap-2 mb-3">
                                         <input type="date" id="maintDateInput" defaultValue={getTodayStr()} className="text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold w-[115px] shrink-0" />
                                         <select id="maintVehicleSelect" className="text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold w-[80px] shrink-0">
                                             {vehiclesList.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                                         </select>
-                                        <input type="text" id="maintContentInput" className="flex-1 w-full min-w-[150px] text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold" placeholder="정비/점검 내역 입력" onKeyDown={(e) => { if(e.key==='Enter') { const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, e.target.value, dStr); e.target.value=''; } }} />
+                                        <input type="text" id="maintContentInput" className="flex-1 w-full min-w-[150px] text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold" placeholder="정비내역" onKeyDown={(e) => { if(e.key==='Enter') { const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, e.target.value, dStr); e.target.value=''; } }} />
                                         <button onClick={() => { const el = document.getElementById('maintContentInput'); const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, el.value, dStr); el.value=''; }} className="bg-slate-800 text-white w-8 h-8 rounded-lg flex items-center justify-center shrink-0"><Icons.Plus className="w-4 h-4"/></button>
                                     </div>
                                 )}
-                                
-                                <div className="text-[9px] text-slate-400 font-bold mb-2 text-right">월별 최신 15건 표시</div>
-                                <div className="space-y-4 h-[500px] overflow-y-auto pr-1 relative">
-                                    {Object.keys(groupedMaintenanceLogs).length === 0 ? (
-                                        <div className="text-center text-slate-400 text-xs py-10">{(maintSearch || maintStartDate || maintEndDate || maintSearchVehicle) ? "검색 결과가 없습니다." : "등록된 정비 내역이 없습니다."}</div>
-                                    ) : (
-                                        Object.keys(groupedMaintenanceLogs).sort((a, b) => b.localeCompare(a)).map(monthStr => {
-                                            const [yyyy, mm] = monthStr.split('-');
-                                            return (
-                                                <div key={monthStr} className="space-y-2">
-                                                    <div className="sticky top-0 bg-slate-100/90 backdrop-blur px-2 py-1 rounded text-[10px] font-black text-slate-600 border border-slate-200 z-10 shadow-sm">
-                                                        {yyyy}년 {parseInt(mm)}월
-                                                    </div>
-                                                    {groupedMaintenanceLogs[monthStr].map(log => {
-                                                        const vehicle = vehiclesList.find(v => v.id === log.vehicleId) || { name: '삭제된차량' };
-                                                        return (
-                                                            <div key={log.id} className={`flex items-start justify-between p-2.5 rounded-lg border text-xs transition ${log.isCompleted ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-rose-200 shadow-sm'}`}>
-                                                                <div className="flex items-start gap-2 flex-grow">
-                                                                    <input type="checkbox" checked={log.isCompleted} onChange={() => isEditAllowed && toggleMaintenanceLog(log.id)} className={`mt-0.5 w-4 h-4 text-blue-600 rounded shrink-0 ${isEditAllowed ? 'cursor-pointer' : 'cursor-default opacity-60 pointer-events-none'}`} />
-                                                                    <div className={`flex flex-col ${log.isCompleted ? 'line-through text-slate-400' : 'text-slate-700'}`}>
-                                                                        <div className="font-extrabold text-blue-600 mb-0.5 flex items-center gap-1">
-                                                                            {vehicle.name} <span className="text-[9px] text-slate-400 font-normal">{log.date}</span>
-                                                                        </div>
-                                                                        <span className="font-bold leading-tight whitespace-pre-wrap break-keep">{log.content}</span>
-                                                                        {log.author && log.author !== '익명' && <span className="text-[9px] text-slate-400 mt-1 block font-normal">작성자: {log.author}</span>}
-                                                                    </div>
-                                                                </div>
-                                                                {isEditAllowed && (
-                                                                    <button onClick={() => deleteMaintenanceLog(log.id)} className="text-red-200 hover:text-red-500 shrink-0 p-1"><Icons.Trash2 className="w-3 h-3"/></button>
-                                                                )}
+                                <div className="space-y-4 h-[500px] overflow-y-auto pr-1">
+                                    {Object.keys(groupedMaintenanceLogs).sort((a, b) => b.localeCompare(a)).map(monthStr => (
+                                        <div key={monthStr} className="space-y-2">
+                                            <div className="sticky top-0 bg-slate-100/90 backdrop-blur px-2 py-1 rounded text-[10px] font-black text-slate-600 border border-slate-200 shadow-sm">{monthStr.split('-')[0]}년 {parseInt(monthStr.split('-')[1])}월</div>
+                                            {groupedMaintenanceLogs[monthStr].map(log => {
+                                                const vehicle = vehiclesList.find(v => v.id === log.vehicleId) || { name: '삭제된차량' };
+                                                return (
+                                                    <div key={log.id} className={`flex items-start justify-between p-2.5 rounded-lg border text-xs transition ${log.isCompleted ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-rose-200 shadow-sm'}`}>
+                                                        <div className="flex items-start gap-2 flex-grow">
+                                                            <input type="checkbox" checked={log.isCompleted} onChange={() => isEditAllowed && toggleMaintenanceLog(log.id)} className={`mt-0.5 w-4 h-4 text-blue-600 rounded shrink-0 ${isEditAllowed ? 'cursor-pointer' : 'cursor-default opacity-60 pointer-events-none'}`} />
+                                                            <div className={`flex flex-col ${log.isCompleted ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                                                                <div className="font-extrabold text-blue-600 mb-0.5 flex items-center gap-1">{vehicle.name} <span className="text-[9px] text-slate-400 font-normal">{log.date}</span></div>
+                                                                <span className="font-bold leading-tight">{log.content}</span>
                                                             </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            );
-                                        })
-                                    )}
+                                                        </div>
+                                                        {isEditAllowed && <button onClick={() => deleteMaintenanceLog(log.id)} className="text-red-200 hover:text-red-500 shrink-0 p-1"><Icons.Trash2 className="w-3 h-3"/></button>}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
                             {isEditAllowed && (
                                 <div className="grid grid-cols-2 gap-3">
-                                    <button onClick={() => setModal({ type: 'drivers' })} className="bg-white border border-orange-200 text-orange-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-orange-50 transition flex items-center justify-center gap-2">
-                                        <Icons.Users className="w-4 h-4"/> 인원 관리
-                                    </button>
-                                    <button onClick={() => setModal({ type: 'vehicles' })} className="bg-white border border-indigo-200 text-indigo-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-indigo-50 transition flex items-center justify-center gap-2">
-                                        <Icons.Bus className="w-4 h-4"/> 차량 관리
-                                    </button>
-                                    <button onClick={() => setModal({ type: 'paySettings' })} className="bg-white border border-yellow-300 text-yellow-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-yellow-50 transition flex items-center justify-center gap-2">
-                                        <Icons.Money className="w-4 h-4"/> 관외비 설정
-                                    </button>
-                                    <button onClick={() => setModal({ type: 'data' })} className="bg-white border border-slate-200 text-slate-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2">
-                                        <Icons.Database className="w-4 h-4"/> 데이터 및 백업
-                                    </button>
+                                    <button onClick={() => setModal({ type: 'drivers' })} className="bg-white border border-orange-200 text-orange-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-orange-50 transition flex items-center justify-center gap-2"><Icons.Users className="w-4 h-4"/> 인원 관리</button>
+                                    <button onClick={() => setModal({ type: 'vehicles' })} className="bg-white border border-indigo-200 text-indigo-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-indigo-50 transition flex items-center justify-center gap-2"><Icons.Bus className="w-4 h-4"/> 차량 관리</button>
+                                    <button onClick={() => setModal({ type: 'paySettings' })} className="bg-white border border-yellow-300 text-yellow-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-yellow-50 transition flex items-center justify-center gap-2"><Icons.Money className="w-4 h-4"/> 관외비 설정</button>
+                                    <button onClick={() => setModal({ type: 'data' })} className="bg-white border border-slate-200 text-slate-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2"><Icons.Database className="w-4 h-4"/> 데이터 및 백업</button>
                                     
-                                    {ENABLE_DISPATCH_LOGS_BOARD && (
-                                        <button onClick={() => setModal({ type: 'dispatchLogs' })} className="bg-white border border-blue-200 text-blue-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-blue-50 transition flex items-center justify-center gap-2 col-span-2">
-                                            <Icons.ClipboardList className="w-4 h-4"/> 배차인원 변동사항 (D+1 ~ D+10)
-                                        </button>
-                                    )}
-                                    
-                                    {ENABLE_PAST_DISPATCH_LOGS_BOARD && (
-                                        <button onClick={() => setModal({ type: 'pastDispatchLogs' })} className="bg-white border border-rose-200 text-rose-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-rose-50 transition flex items-center justify-center gap-2 col-span-2">
-                                            <Icons.ClipboardList className="w-4 h-4"/> 인원 변동사항 (당일 ~ 3일)
-                                        </button>
-                                    )}
+                                    {ENABLE_DISPATCH_LOGS_BOARD && <button onClick={() => setModal({ type: 'dispatchLogs' })} className="bg-white border border-blue-200 text-blue-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-blue-50 transition flex items-center justify-center gap-2 col-span-2"><Icons.ClipboardList className="w-4 h-4"/> 배차인원 변동사항 (D+1 ~ D+10)</button>}
+                                    {ENABLE_PAST_DISPATCH_LOGS_BOARD && <button onClick={() => setModal({ type: 'pastDispatchLogs' })} className="bg-white border border-rose-200 text-rose-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-rose-50 transition flex items-center justify-center gap-2 col-span-2"><Icons.ClipboardList className="w-4 h-4"/> 인원 변동사항 (당일 ~ 3일)</button>}
                                 </div>
                             )}
                         </div>
@@ -1377,44 +1279,21 @@
                                                                     <input type="checkbox" checked={isReserved} onChange={() => toggleVehicleReservation(v.id)} className="w-5 h-5 rounded text-blue-600"/>
                                                                     <div><div className="text-sm font-black">{v.name}</div><div className="text-[10px] text-slate-400 font-mono">{v.plate}</div></div>
                                                                 </label>
-                                                                {isReserved && assignedDrivers && !info.isCancelled && (
-                                                                    <div className="ml-8 mt-1 text-xs text-blue-600 font-bold flex items-center gap-1">
-                                                                        <Icons.UserCheck className="w-3 h-3"/> {assignedDrivers}
-                                                                    </div>
-                                                                )}
+                                                                {isReserved && assignedDrivers && !info.isCancelled && <div className="ml-8 mt-1 text-xs text-blue-600 font-bold flex items-center gap-1"><Icons.UserCheck className="w-3 h-3"/> {assignedDrivers}</div>}
                                                             </div>
                                                             <div className="flex items-center gap-2">
-                                                                {isReserved ? (
+                                                                {isReserved && (
                                                                     <div className="flex gap-2">
-                                                                        <button onClick={() => setModal({ type: 'kakao', data: v.id })} className="bg-yellow-300 text-[10px] px-2 py-1 rounded shadow-sm">카톡분석</button>
-                                                                        <button onClick={() => toggleVehicleReservation(v.id)} className="bg-red-100 text-red-500 text-[10px] px-2 py-1 rounded">삭제</button>
+                                                                        <button onClick={() => updateVehicleInfo(v.id, 'isCancelled', !info.isCancelled)} className={`text-[10px] px-2 py-1 rounded shadow-sm ${info.isCancelled ? 'bg-red-500 text-white' : 'bg-red-50 text-red-500 hover:bg-red-100'}`}>{info.isCancelled ? '취소됨' : '예약취소'}</button>
+                                                                        <button onClick={() => updateVehicleInfo(v.id, 'isUnavailable', !info.isUnavailable)} className={`text-[10px] px-2 py-1 rounded shadow-sm ${info.isUnavailable ? 'bg-purple-500 text-white' : 'bg-purple-50 text-purple-600 hover:bg-purple-100'}`}>{info.isUnavailable ? '운전원변경' : '운전원변경'}</button>
+                                                                        <button onClick={() => updateVehicleInfo(v.id, 'isEmergency', !info.isEmergency)} className={`text-[10px] px-2 py-1 rounded shadow-sm ${info.isEmergency ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>{info.isEmergency ? '긴급배차' : '긴급(순번제외)'}</button>
+                                                                        {v.capacity > 1 && <button onClick={() => updateVehicleInfo(v.id, 'isSingleDriver', !info.isSingleDriver)} className={`text-[10px] px-2 py-1 rounded shadow-sm ${info.isSingleDriver ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>{info.isSingleDriver ? '1인배정' : '1인배정'}</button>}
                                                                     </div>
-                                                                ) : (v.type === 'BUS' ? <Icons.Bus className="text-slate-300 w-5 h-5"/> : <Icons.BusFront className="text-slate-300 w-5 h-5"/>)}
+                                                                )}
                                                             </div>
                                                         </div>
                                                         {isReserved && (
                                                             <div className="mt-3 pt-3 border-t border-blue-50 space-y-3 animate-[fadeIn_0.2s_ease-out]">
-                                                                <div className="flex flex-wrap gap-4 mb-2">
-                                                                    <label className="flex items-center gap-2">
-                                                                        <input type="checkbox" checked={info.isCancelled || false} onChange={(e) => updateVehicleInfo(v.id, 'isCancelled', e.target.checked)} className="w-4 h-4 text-red-500 rounded"/>
-                                                                        <span className="text-xs text-red-600 font-bold">예약 취소 (미운행)</span>
-                                                                    </label>
-                                                                    <label className="flex items-center gap-2">
-                                                                        <input type="checkbox" checked={info.isUnavailable || false} onChange={(e) => updateVehicleInfo(v.id, 'isUnavailable', e.target.checked)} className="w-4 h-4 text-purple-500 rounded"/>
-                                                                        <span className="text-xs text-purple-600 font-bold">운전원변경</span>
-                                                                    </label>
-                                                                    {v.capacity > 1 && (
-                                                                        <label className="flex items-center gap-2">
-                                                                            <input type="checkbox" checked={info.isSingleDriver || false} onChange={(e) => updateVehicleInfo(v.id, 'isSingleDriver', e.target.checked)} className="w-4 h-4 text-blue-500 rounded"/>
-                                                                            <span className="text-xs text-blue-600 font-bold">1인 배정</span>
-                                                                        </label>
-                                                                    )}
-                                                                    <label className="flex items-center gap-2">
-                                                                        <input type="checkbox" checked={info.isEmergency || false} onChange={(e) => updateVehicleInfo(v.id, 'isEmergency', e.target.checked)} className="w-4 h-4 text-orange-500 rounded"/>
-                                                                        <span className="text-xs text-orange-600 font-bold">긴급 (순번제외)</span>
-                                                                    </label>
-                                                                </div>
-
                                                                 <div className="grid grid-cols-2 gap-2">
                                                                     <AutoSaveInput value={info.custName} onSave={(val) => updateVehicleInfo(v.id, 'custName', val)} placeholder="예약자명" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
                                                                     <AutoSaveInput value={info.custPhone} onSave={(val) => updateVehicleInfo(v.id, 'custPhone', val)} placeholder="연락처" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
@@ -1462,7 +1341,6 @@
                                                                     <option value="etc">기타 (직접입력)</option>
                                                                 </select>
                                                                 
-                                                                {/* 일자별 시간 및 휴일 설정 */}
                                                                 <div className="mt-2 p-2 bg-slate-50 border border-slate-100 rounded-lg space-y-2">
                                                                     {times.map((dayTime, dIdx) => (
                                                                         <div key={dIdx} className={`flex flex-col gap-1.5 ${dIdx > 0 ? 'pt-2 border-t border-slate-200' : ''}`}>
@@ -1506,6 +1384,7 @@
                     </footer>
 
                     {/* Modals */}
+                    
                     {/* 관리자 로그인 모달 */}
                     {modal.type === 'adminLogin' && (
                         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
@@ -1516,160 +1395,108 @@
                                 </div>
                                 <div className="p-6 space-y-4">
                                     <p className="text-xs text-slate-500 font-bold text-center mb-2">배차 일정을 수정하려면 비밀번호를 입력하세요.</p>
-                                    <input 
-                                        type="password" id="adminPwdInput" placeholder="비밀번호 입력" 
-                                        className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-slate-800 bg-slate-50 text-center tracking-widest" 
-                                        onKeyDown={(e) => { 
-                                            if(e.key === 'Enter') {
-                                                if (e.target.value === adminPassword) { setIsAdmin(true); localStorage.setItem('isAdmin', 'true'); setModal({ type: null }); } 
-                                                else { setAlertMessage("비밀번호가 일치하지 않습니다."); }
-                                            } 
-                                        }}
-                                    />
-                                    <button 
-                                        onClick={() => {
-                                            if (document.getElementById('adminPwdInput').value === adminPassword) { setIsAdmin(true); localStorage.setItem('isAdmin', 'true'); setModal({ type: null }); } 
-                                            else { setAlertMessage("비밀번호가 일치하지 않습니다."); }
-                                        }} 
-                                        className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold mt-2 hover:bg-slate-700 transition"
-                                    >로그인</button>
+                                    <input type="password" id="adminPwdInput" placeholder="비밀번호 입력" className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-slate-800 bg-slate-50 text-center tracking-widest" onKeyDown={(e) => { if(e.key === 'Enter') { if (e.target.value === adminPassword) { setIsAdmin(true); localStorage.setItem('isAdmin', 'true'); setModal({ type: null }); } else { setAlertMessage("비밀번호가 일치하지 않습니다."); } } }} />
+                                    <button onClick={() => { if (document.getElementById('adminPwdInput').value === adminPassword) { setIsAdmin(true); localStorage.setItem('isAdmin', 'true'); setModal({ type: null }); } else { setAlertMessage("비밀번호가 일치하지 않습니다."); } }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold mt-2 hover:bg-slate-700 transition">로그인</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* 배차 변동 내역 게시판 모달 (미래) */}
-                    {modal.type === 'dispatchLogs' && (
-                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-                                <div className="p-4 border-b font-bold flex justify-between items-center bg-blue-50 text-blue-700 shrink-0">
-                                    <h3 className="flex items-center gap-2"><Icons.ClipboardList className="w-4 h-4"/>배차 인원 변동사항 (익일 ~ 10일)</h3>
-                                    <div className="flex items-center gap-3">
-                                        <button onClick={() => clearAllDispatchLogs(false)} className="text-[10px] bg-white border border-red-200 text-red-500 px-2 py-1 rounded hover:bg-red-50 transition shadow-sm">전체 삭제</button>
-                                        <button onClick={() => setModal({ type: null })} className="hover:text-blue-900"><Icons.X className="w-5 h-5"/></button>
-                                    </div>
-                                </div>
-                                <div className="p-4 overflow-y-auto flex-grow bg-slate-50 space-y-2">
-                                    {dispatchLogs.length === 0 ? <div className="text-center text-slate-400 text-sm py-10">기록된 변동사항이 없습니다.</div> : (
-                                        <div className="overflow-x-auto rounded-lg border border-slate-200 shadow-sm bg-white">
-                                            <table className="w-full text-left text-xs min-w-[500px]">
-                                                <thead className="bg-slate-100 text-slate-600 border-b border-slate-200 font-bold">
-                                                    <tr><th className="p-2 text-center">변경 일시</th><th className="p-2 text-center">적용 일자</th><th className="p-2">변경 내용</th><th className="p-2 text-center">작업자</th><th className="p-2 text-center">삭제</th></tr>
-                                                </thead>
-                                                <tbody>
-                                                    {dispatchLogs.map(log => (
-                                                        <tr key={log.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
-                                                            <td className="p-2 text-center text-[10px] text-slate-500 whitespace-nowrap">{log.timestamp}</td>
-                                                            <td className="p-2 text-center font-bold text-blue-600 whitespace-nowrap">{log.targetDate}</td>
-                                                            <td className="p-2 font-bold text-slate-700">{log.content}</td>
-                                                            <td className="p-2 text-center text-[10px] text-slate-500 whitespace-nowrap">{log.author}</td>
-                                                            <td className="p-2 text-center"><button onClick={() => deleteDispatchLog(log.id, false)} className="text-red-300 hover:text-red-600 p-1"><Icons.Trash2 className="w-3 h-3" /></button></td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 배차 변동 내역 게시판 모달 (단기) */}
-                    {modal.type === 'pastDispatchLogs' && (
-                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-                                <div className="p-4 border-b font-bold flex justify-between items-center bg-rose-50 text-rose-700 shrink-0">
-                                    <h3 className="flex items-center gap-2"><Icons.ClipboardList className="w-4 h-4"/>단기 배차 변동사항 (당일 ~ 3일)</h3>
-                                    <div className="flex items-center gap-3">
-                                        <button onClick={() => clearAllDispatchLogs(true)} className="text-[10px] bg-white border border-red-200 text-red-500 px-2 py-1 rounded hover:bg-red-50 transition shadow-sm">전체 삭제</button>
-                                        <button onClick={() => setModal({ type: null })} className="hover:text-rose-900"><Icons.X className="w-5 h-5"/></button>
-                                    </div>
-                                </div>
-                                <div className="p-4 overflow-y-auto flex-grow bg-slate-50 space-y-2">
-                                    {pastDispatchLogs.length === 0 ? <div className="text-center text-slate-400 text-sm py-10">기록된 변동사항이 없습니다.</div> : (
-                                        <div className="overflow-x-auto rounded-lg border border-slate-200 shadow-sm bg-white">
-                                            <table className="w-full text-left text-xs min-w-[500px]">
-                                                <thead className="bg-slate-100 text-slate-600 border-b border-slate-200 font-bold">
-                                                    <tr><th className="p-2 text-center">변경 일시</th><th className="p-2 text-center">적용 일자</th><th className="p-2">변경 내용</th><th className="p-2 text-center">작업자</th><th className="p-2 text-center">삭제</th></tr>
-                                                </thead>
-                                                <tbody>
-                                                    {pastDispatchLogs.map(log => (
-                                                        <tr key={log.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
-                                                            <td className="p-2 text-center text-[10px] text-slate-500 whitespace-nowrap">{log.timestamp}</td>
-                                                            <td className="p-2 text-center font-bold text-rose-600 whitespace-nowrap">{log.targetDate}</td>
-                                                            <td className="p-2 font-bold text-slate-700">{log.content}</td>
-                                                            <td className="p-2 text-center text-[10px] text-slate-500 whitespace-nowrap">{log.author}</td>
-                                                            <td className="p-2 text-center"><button onClick={() => deleteDispatchLog(log.id, true)} className="text-red-300 hover:text-red-600 p-1"><Icons.Trash2 className="w-3 h-3" /></button></td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {modal.type === 'replace' && (
-                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl">
-                                <div className="p-4 border-b font-bold flex justify-between">
-                                    <h3>대체 운전자 선택</h3>
-                                    <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
-                                </div>
-                                <div className="p-2 max-h-[400px] overflow-y-auto">
-                                    {driverNames.map((nm, idx) => {
-                                        if (!nm) return null;
-                                        return (
-                                            <button key={idx} onClick={() => applyReplacement(`${modal.data.vId}_${modal.data.sIdx}`, idx)} className="w-full p-3 text-left font-bold text-sm border-b border-slate-50 hover:bg-blue-50 flex justify-between">
-                                                <span>{currentDayData.driverRanks[idx]}위 {nm}</span>
-                                                <span className={`text-xs ${currentDayData.driverStatus[idx] ? 'text-blue-500' : 'text-slate-300'}`}>{currentDayData.driverStatus[idx] ? '출근' : '휴무'}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                <div className="p-3 border-t">
-                                    <button onClick={() => applyReplacement(`${modal.data.vId}_${modal.data.sIdx}`, null)} className="w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-lg">수동 배정 해제</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 공통 Confirm / Alert 모달 */}
-                    {confirmDialog && (
-                        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.2s_ease-out]">
-                                <div className="p-6">
-                                    <p className="text-sm font-bold text-slate-800 text-center whitespace-pre-wrap leading-relaxed">{confirmDialog.message}</p>
-                                </div>
-                                <div className="flex border-t border-slate-100">
-                                    <button onClick={() => setConfirmDialog(null)} className="flex-1 p-3 text-sm font-bold text-slate-500 hover:bg-slate-50 border-r border-slate-100 transition-colors">취소</button>
-                                    <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog(null); }} className="flex-1 p-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors">확인</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {alertMessage && (
-                        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.2s_ease-out]">
-                                <div className="p-6">
-                                    <p className="text-sm font-bold text-slate-800 text-center whitespace-pre-wrap leading-relaxed">{alertMessage}</p>
-                                </div>
-                                <div className="flex border-t border-slate-100">
-                                    <button onClick={() => setAlertMessage('')} className="flex-1 p-3 text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors">확인</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 나머지 모든 모달들 (업무일지, 알림, 데이터백업, 정비, 통계 등 압축 처리) */}
-                    {(modal.type === 'workLog' || modal.type === 'notification' || modal.type === 'data' || modal.type === 'stats' || modal.type === 'vehicles' || modal.type === 'paySettings' || modal.type === 'kakao' || modal.type === 'drivers') && (
+                    {/* 알림 등 기타 모달들 간소화 (데이터관리, 관외비, 차량관리 등) */}
+                    {(modal.type === 'workLog' || modal.type === 'notification' || modal.type === 'data' || modal.type === 'stats' || modal.type === 'vehicles' || modal.type === 'paySettings' || modal.type === 'drivers' || modal.type === 'replace' || modal.type === 'dispatchLogs' || modal.type === 'pastDispatchLogs') && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
-                            <div className={`bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col ${modal.type==='stats' ? 'max-w-[95vw] lg:max-w-7xl h-[85vh]' : 'max-w-md max-h-[80vh]'}`}>
+                            <div className={`bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col ${modal.type==='stats' ? 'max-w-[95vw] lg:max-w-7xl h-[85vh]' : (modal.type==='dispatchLogs' || modal.type==='pastDispatchLogs') ? 'max-w-2xl max-h-[80vh]' : 'max-w-md max-h-[80vh]'}`}>
                                 
+                                {/* 배차 변동 내역 (미래) */}
+                                {modal.type === 'dispatchLogs' && (
+                                    <>
+                                        <div className="p-4 border-b font-bold flex justify-between items-center bg-blue-50 text-blue-700 shrink-0">
+                                            <h3 className="flex items-center gap-2"><Icons.ClipboardList className="w-4 h-4"/>배차 인원 변동사항 (익일 ~ 10일)</h3>
+                                            <div className="flex items-center gap-3">
+                                                <button onClick={() => clearAllDispatchLogs(false)} className="text-[10px] bg-white border border-red-200 text-red-500 px-2 py-1 rounded hover:bg-red-50 transition shadow-sm">전체 삭제</button>
+                                                <button onClick={() => setModal({ type: null })} className="hover:text-blue-900"><Icons.X className="w-5 h-5"/></button>
+                                            </div>
+                                        </div>
+                                        <div className="p-4 overflow-y-auto flex-grow bg-slate-50 space-y-2">
+                                            {dispatchLogs.length === 0 ? (
+                                                <div className="text-center text-slate-400 text-sm py-10">기록된 변동사항이 없습니다.</div>
+                                            ) : (
+                                                <div className="overflow-x-auto rounded-lg border border-slate-200 shadow-sm bg-white">
+                                                    <table className="w-full text-left text-xs min-w-[500px]">
+                                                        <thead className="bg-slate-100 text-slate-600 border-b border-slate-200 font-bold">
+                                                            <tr><th className="p-2 text-center">변경 일시</th><th className="p-2 text-center">적용 일자</th><th className="p-2">변경 내용</th><th className="p-2 text-center">작업자</th><th className="p-2 text-center">삭제</th></tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {dispatchLogs.map(log => (
+                                                                <tr key={log.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                                                                    <td className="p-2 text-center text-[10px] text-slate-500 whitespace-nowrap">{log.timestamp}</td>
+                                                                    <td className="p-2 text-center font-bold text-blue-600 whitespace-nowrap">{log.targetDate}</td>
+                                                                    <td className="p-2 font-bold text-slate-700">{log.content}</td>
+                                                                    <td className="p-2 text-center text-[10px] text-slate-500 whitespace-nowrap">{log.author}</td>
+                                                                    <td className="p-2 text-center"><button onClick={() => deleteDispatchLog(log.id, false)} className="text-red-300 hover:text-red-600 p-1"><Icons.Trash2 className="w-3 h-3" /></button></td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* 배차 변동 내역 (단기) */}
+                                {modal.type === 'pastDispatchLogs' && (
+                                    <>
+                                        <div className="p-4 border-b font-bold flex justify-between items-center bg-rose-50 text-rose-700 shrink-0">
+                                            <h3 className="flex items-center gap-2"><Icons.ClipboardList className="w-4 h-4"/>단기 배차 변동사항 (당일 ~ 3일)</h3>
+                                            <div className="flex items-center gap-3">
+                                                <button onClick={() => clearAllDispatchLogs(true)} className="text-[10px] bg-white border border-red-200 text-red-500 px-2 py-1 rounded hover:bg-red-50 transition shadow-sm">전체 삭제</button>
+                                                <button onClick={() => setModal({ type: null })} className="hover:text-rose-900"><Icons.X className="w-5 h-5"/></button>
+                                            </div>
+                                        </div>
+                                        <div className="p-4 overflow-y-auto flex-grow bg-slate-50 space-y-2">
+                                            {pastDispatchLogs.length === 0 ? (
+                                                <div className="text-center text-slate-400 text-sm py-10">기록된 변동사항이 없습니다.</div>
+                                            ) : (
+                                                <div className="overflow-x-auto rounded-lg border border-slate-200 shadow-sm bg-white">
+                                                    <table className="w-full text-left text-xs min-w-[500px]">
+                                                        <thead className="bg-slate-100 text-slate-600 border-b border-slate-200 font-bold">
+                                                            <tr><th className="p-2 text-center">변경 일시</th><th className="p-2 text-center">적용 일자</th><th className="p-2">변경 내용</th><th className="p-2 text-center">작업자</th><th className="p-2 text-center">삭제</th></tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {pastDispatchLogs.map(log => (
+                                                                <tr key={log.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                                                                    <td className="p-2 text-center text-[10px] text-slate-500 whitespace-nowrap">{log.timestamp}</td>
+                                                                    <td className="p-2 text-center font-bold text-rose-600 whitespace-nowrap">{log.targetDate}</td>
+                                                                    <td className="p-2 font-bold text-slate-700">{log.content}</td>
+                                                                    <td className="p-2 text-center text-[10px] text-slate-500 whitespace-nowrap">{log.author}</td>
+                                                                    <td className="p-2 text-center"><button onClick={() => deleteDispatchLog(log.id, true)} className="text-red-300 hover:text-red-600 p-1"><Icons.Trash2 className="w-3 h-3" /></button></td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* 대체 운전자 선택 (replace) */}
+                                {modal.type === 'replace' && (
+                                    <>
+                                        <div className="p-4 border-b font-bold flex justify-between"><h3>대체 운전자 선택</h3><button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
+                                        <div className="p-2 max-h-[400px] overflow-y-auto">
+                                            {driverNames.map((nm, idx) => nm ? (
+                                                <button key={idx} onClick={() => applyReplacement(`${modal.data.vId}_${modal.data.sIdx}`, idx)} className="w-full p-3 text-left font-bold text-sm border-b border-slate-50 hover:bg-blue-50 flex justify-between">
+                                                    <span>{currentDayData.driverRanks[idx]}위 {nm}</span><span className={`text-xs ${currentDayData.driverStatus[idx] ? 'text-blue-500' : 'text-slate-300'}`}>{currentDayData.driverStatus[idx] ? '출근' : '휴무'}</span>
+                                                </button>
+                                            ) : null)}
+                                        </div>
+                                        <div className="p-3 border-t"><button onClick={() => applyReplacement(`${modal.data.vId}_${modal.data.sIdx}`, null)} className="w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-lg">수동 배정 해제</button></div>
+                                    </>
+                                )}
+
+                                {/* 업무일지 작성 */}
                                 {modal.type === 'workLog' && (
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between bg-sky-50 text-sky-700 shrink-0">
@@ -1692,6 +1519,7 @@
                                     </>
                                 )}
 
+                                {/* 일정 알림 등록 */}
                                 {modal.type === 'notification' && (
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between bg-rose-50 text-rose-700">
@@ -1706,6 +1534,7 @@
                                     </>
                                 )}
 
+                                {/* 데이터 관리 */}
                                 {modal.type === 'data' && (
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between"><h3>데이터 관리</h3><button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
@@ -1719,6 +1548,7 @@
                                     </>
                                 )}
 
+                                {/* 관외비 설정 */}
                                 {modal.type === 'paySettings' && (
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between"><h3>관외비 설정</h3><button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
@@ -1732,6 +1562,7 @@
                                     </>
                                 )}
 
+                                {/* 운전자 관리 */}
                                 {modal.type === 'drivers' && (
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between bg-orange-50 text-orange-700 shrink-0"><h3>운전자 관리 및 순번</h3><button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
@@ -1755,6 +1586,7 @@
                                     </>
                                 )}
 
+                                {/* 차량 관리 */}
                                 {modal.type === 'vehicles' && (
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between"><h3>차량 관리</h3><button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
@@ -1776,26 +1608,7 @@
                                     </>
                                 )}
 
-                                {modal.type === 'kakao' && (
-                                    <>
-                                        <div className="bg-yellow-400 p-4 font-bold flex justify-between text-slate-900"><h3>카톡 분석</h3><button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
-                                        <div className="p-6">
-                                            <textarea id="kInput" className="w-full h-32 bg-slate-50 border rounded-xl p-3 text-sm font-bold mb-4" placeholder="붙여넣으세요..."></textarea>
-                                            <button onClick={() => {
-                                                const txt = document.getElementById('kInput').value; const pData = {};
-                                                const dM = txt.match(/(?:장소|목적지|행선지)[:\s]+([^\n,]+)/) || txt.match(/([가-힣\s]+(?:역|터미널|공항|호텔|시청|본사))/);
-                                                if(dM) pData.destination = dM[1].trim();
-                                                const tMs = txt.match(/(\d{1,2})[:시\s]+(\d{2})?/g);
-                                                if(tMs && tMs.length) { const pT = (m) => { const p=m.replace(/[시\s]/g,':').split(':'); let h=parseInt(p[0]),mn=p[1]?parseInt(p[1]):0; if(txt.includes('오후')&&h<12)h+=12; return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`; }; pData.startTime = pT(tMs[0]); if(tMs[1]) pData.endTime = pT(tMs[1]); }
-                                                const pM = txt.match(/\d{2,3}-\d{3,4}-\d{4}/); if(pM) pData.custPhone = pM[0];
-                                                const nM = txt.match(/(?:성함|예약자|담당자)[:\s]+([가-힣]{2,4})/) || txt.match(/([가-힣]{2,4})\s?(?:님|과장|차장|부장)/);
-                                                if(nM) pData.custName = nM[1];
-                                                applyKakaoData(modal.data, pData);
-                                            }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">적용</button>
-                                        </div>
-                                    </>
-                                )}
-
+                                {/* 정산(통계) */}
                                 {modal.type === 'stats' && (
                                     <>
                                         <div className="p-5 border-b font-bold flex flex-col gap-3 bg-slate-50">
@@ -1829,7 +1642,7 @@
                                                                     <td className="p-2 font-extrabold">{s.nm}</td><td>{s.c1||'-'}</td><td>{s.c2||'-'}</td><td>{s.c3||'-'}</td>
                                                                     <td>{s.typeCounts['공공예약']||'-'}</td><td>{s.typeCounts['시티투어']||'-'}</td><td>{s.typeCounts['나들이']||'-'}</td><td>{s.typeCounts['성묘지원']||'-'}</td><td>{s.typeCounts['기타']||'-'}</td>
                                                                     <td className="text-blue-600 border-l">{s.tA.toFixed(3)}</td><td className="text-emerald-600">{s.tM.toLocaleString()}</td>
-                                                                    <td className="bg-blue-50/50 text-blue-800 border-l">{yearlyStatsAll[i].totalMoney.toLocaleString()}</td>
+                                                                    <td className="bg-blue-50/50 text-blue-800 border-l">{yearlyStatsAll[i] ? yearlyStatsAll[i].totalMoney.toLocaleString() : 0}</td>
                                                                 </tr>
                                                             ) : null);
                                                         })()}
@@ -1865,6 +1678,33 @@
                         </div>
                     )}
 
+                    {/* --- 공통 Confirm / Alert 모달 --- */}
+                    {confirmDialog && (
+                        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+                                <div className="p-6">
+                                    <p className="text-sm font-bold text-slate-800 text-center whitespace-pre-wrap leading-relaxed">{confirmDialog.message}</p>
+                                </div>
+                                <div className="flex border-t border-slate-100">
+                                    <button onClick={() => setConfirmDialog(null)} className="flex-1 p-3 text-sm font-bold text-slate-500 hover:bg-slate-50 border-r border-slate-100 transition-colors">취소</button>
+                                    <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog(null); }} className="flex-1 p-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors">확인</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {alertMessage && (
+                        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+                                <div className="p-6">
+                                    <p className="text-sm font-bold text-slate-800 text-center whitespace-pre-wrap leading-relaxed">{alertMessage}</p>
+                                </div>
+                                <div className="flex border-t border-slate-100">
+                                    <button onClick={() => setAlertMessage('')} className="flex-1 p-3 text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors">확인</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
