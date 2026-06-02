@@ -315,7 +315,7 @@
                 targetDate.setHours(0, 0, 0, 0);
                 
                 const diffDays = Math.floor((targetDate.getTime() - today.getTime()) / 86400000);
-                if (diffDays > 7) return "(비공개)";
+                if (diffDays > 10) return "(비공개)";
                 return name;
             }, [isAdmin]);
 
