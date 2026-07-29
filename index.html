@@ -664,25 +664,6 @@
                 } catch (e) { console.error(e); setAlertMessage("관리자 계정 생성 실패: " + e.message); } finally { setAuthProcessing(false); }
             };
 
-            const changeMasterPassword = (newPw) => {
-                if (!newPw.trim()) { setAlertMessage("새 비밀번호를 입력해주세요."); return; }
-                if (newPw.trim().length < 4) { setAlertMessage("비밀번호는 4자리 이상이어야 합니다."); return; }
-                setConfirmDialog({
-                    message: "공통 관리자 비밀번호를 [" + newPw.trim() + "] (으)로 변경하시겠습니까?",
-                    onConfirm: async () => {
-                        try {
-                            await db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ adminPassword: newPw.trim() }, { merge: true });
-                            setAdminPassword(newPw.trim());
-                            setAlertMessage("비밀번호가 성공적으로 변경되었습니다.");
-                            setConfirmDialog(null);
-                        } catch(e) {
-                            console.error(e);
-                            setAlertMessage("비밀번호 변경 중 오류가 발생했습니다.");
-                        }
-                    }
-                });
-            };
-
             const updatePaySettings = async (day, sleep, grave, picnic) => {
                 const newSettings = { day: parseInt(day) || 0, sleep: parseInt(sleep) || 0, grave: parseInt(grave) || 0, picnic: parseInt(picnic) || 0 };
                 setPaySettings(newSettings);
@@ -2042,34 +2023,34 @@
                                             <button onClick={handleBackup} className="w-full py-3 bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 transition shadow-sm"><Icons.Download className="w-5 h-5"/> 백업 데이터 다운로드</button>
                                             <div className="relative"><input type="file" accept=".json" onChange={handleRestore} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/><button className="w-full py-3 bg-slate-100 text-slate-700 border rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition shadow-sm"><Icons.Upload className="w-5 h-5"/> 백업 파일로 복원</button></div>
                                             <button onClick={() => setModal({ type: 'systemLogs' })} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-700 transition shadow-sm"><Icons.ClipboardList className="w-5 h-5"/> 로그확인</button>
-                                            {isEditAllowed && (
-                                                <div className="mt-6 pt-6 border-t space-y-6">
+                                            {ENABLE_LOGIN_SYSTEM && isEditAllowed && (
+                                                <div className="mt-6 pt-6 border-t space-y-3">
+                                                    <h4 className="text-xs font-bold text-slate-500">권한 관리자 계정 추가 (회원 생성 및 권한 부여)</h4>
                                                     <div className="space-y-2">
-                                                        <h4 className="text-xs font-bold text-slate-500">공통 관리자 비밀번호 변경 (인원관리 등 접근용)</h4>
-                                                        <div className="flex gap-2">
-                                                            <input 
-                                                                type="text" 
-                                                                id="changePwdInput" 
-                                                                placeholder={`새 비밀번호 입력 (현재: ${adminPassword})`} 
-                                                                className="w-full border rounded-lg p-2 text-xs font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
-                                                                onKeyDown={(e) => { if(e.key === 'Enter') { const el = document.getElementById('changePwdInput'); changeMasterPassword(el.value); el.value=''; } }}
-                                                            />
-                                                            <button 
-                                                                onClick={() => { const el = document.getElementById('changePwdInput'); changeMasterPassword(el.value); el.value=''; }} 
-                                                                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm transition-colors whitespace-nowrap"
-                                                            >
-                                                                변경 적용
-                                                            </button>
-                                                        </div>
+                                                        <input 
+                                                            type="email" 
+                                                            value={newAdminEmail} 
+                                                            onChange={(e) => setNewAdminEmail(e.target.value)} 
+                                                            placeholder="관리자용 이메일 주소" 
+                                                            className="w-full border rounded-lg p-2 text-xs font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
+                                                        />
+                                                        <input 
+                                                            type="password" 
+                                                            value={newAdminPassword} 
+                                                            onChange={(e) => setNewAdminPassword(e.target.value)} 
+                                                            placeholder="관리자용 비밀번호 (6자리 이상)" 
+                                                            className="w-full border rounded-lg p-2 text-xs font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
+                                                        />
+                                                        <button 
+                                                            onClick={() => createAdminAccount(newAdminEmail, newAdminPassword)} 
+                                                            disabled={authProcessing}
+                                                            className="w-full bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-xl font-bold text-xs shadow-sm transition-colors flex items-center justify-center gap-1"
+                                                        >
+                                                            {authProcessing ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : '신규 관리자 가입 및 등록'}
+                                                        </button>
                                                     </div>
-
-                                                    {ENABLE_LOGIN_SYSTEM && (
-                                                        <div className="space-y-3 border-t pt-4">
-                                                            <h4 className="text-xs font-bold text-slate-500">권한 관리자 계정 추가 (회원 생성 및 권한 부여)</h4>
-                                                            <div className="space-y-2">
-                                                                <input 
-                                                                    type="email" 
-                                                                    value={newAdminEmail} 
+                                                    <div className="mt-3">
+                                                        <h5 className="text-[10px] font-bold text-slate-400 mb-1">현재 등록된 관리자 목록:</h5>
                                                         <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto border p-2 rounded bg-slate-50">
                                                             {adminEmails.map((em, idx) => (
                                                                 <div key={idx} className="bg-white border rounded px-2 py-0.5 text-[10px] flex items-center gap-1 font-bold text-slate-600">
