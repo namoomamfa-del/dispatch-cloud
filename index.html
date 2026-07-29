@@ -91,8 +91,7 @@
             Bell: ({className}) => <i className={`fa-regular fa-bell ${className}`} />,
             ClipboardList: ({className}) => <i className={`fa-solid fa-clipboard-list ${className}`} />,
             Wrench: ({className}) => <i className={`fa-solid fa-wrench ${className}`} />,
-            LogOut: ({className}) => <i className={`fa-solid fa-arrow-right-from-bracket ${className}`} />,
-            Lock: ({className}) => <i className={`fa-solid fa-lock ${className}`} />
+            LogOut: ({className}) => <i className={`fa-solid fa-arrow-right-from-bracket ${className}`} />
         };
 
         const DEFAULT_PAY_SETTINGS = { day: 12500, sleep: 37500, grave: 0, picnic: 0 };
@@ -295,7 +294,6 @@
             const [scheduleData, setScheduleData] = useState({});
             const [modal, setModal] = useState({ type: null, data: null });
             const [isCalendarExpanded, setIsCalendarExpanded] = useState(false); 
-            const [isDispatchUnlocked, setIsDispatchUnlocked] = useState(false);
             
             const [statsMode, setStatsMode] = useState('monthly');
             const [statsYear, setStatsYear] = useState(new Date().getFullYear());
@@ -628,7 +626,6 @@
                             await auth.signOut(); 
                             localStorage.removeItem('isAdmin');
                             setLocalIsAdmin(false);
-                            setIsDispatchUnlocked(false);
                             await auth.signInAnonymously(); 
                             setAlertMessage("안전하게 로그아웃 되었습니다.");
                         } catch (e) {
@@ -647,7 +644,6 @@
                     onConfirm: () => {
                         localStorage.removeItem('isAdmin');
                         setLocalIsAdmin(false);
-                        setIsDispatchUnlocked(false);
                         setConfirmDialog(null);
                         setAlertMessage("관리자 모드가 종료되었습니다.");
                     }
@@ -1684,28 +1680,28 @@
                                 <div className="hidden lg:block w-2 bg-slate-200 hover:bg-blue-400 cursor-col-resize rounded-full transition-colors self-stretch flex-shrink-0 z-10" onMouseDown={handleMouseDown}></div>
 
                                 <div className="flex-1 min-w-0 space-y-6">
-                                    {!isDispatchUnlocked ? (
-                                        <div className="bg-white p-10 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center justify-center min-h-[600px]">
-                                            <Icons.Lock className="w-12 h-12 text-slate-300 mb-4" />
-                                            <h2 className="text-xl font-black text-slate-800 mb-2">배차 예약 정보 잠금</h2>
-                                            <p className="text-slate-500 mb-6 text-sm font-bold">배차 정보를 열람하거나 수정하려면 관리자 비밀번호를 입력하세요.</p>
-                                            <button onClick={() => setModal({ type: 'passwordPrompt', data: { action: 'unlockDispatch', title: '배차 예약 정보' } })} className="bg-slate-800 text-white px-6 py-3 rounded-xl font-bold shadow hover:bg-slate-700 transition flex items-center gap-2">
-                                                <Icons.Lock className="w-4 h-4"/> 비밀번호 입력
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 min-h-[600px]">
-                                            <div className="flex justify-between items-center mb-6 border-b pb-4 font-bold">
-                                                <div className="flex flex-col font-bold">
-                                                    <span className="text-blue-600 text-sm font-extrabold mb-1">{selectedDateStr}</span>
-                                                    <h2 className="text-xl font-black text-slate-800 font-bold">배차 예약 정보 입력</h2>
-                                                </div>
-                                                <button onClick={() => setIsDispatchUnlocked(false)} className="text-xs bg-slate-100 text-slate-500 hover:bg-slate-200 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition shadow-sm">다시 잠금</button>
+                                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 min-h-[600px]">
+                                        <div className="flex justify-between items-center mb-6 border-b pb-4 font-bold">
+                                            <div className="flex flex-col font-bold">
+                                                <span className="text-blue-600 text-sm font-extrabold mb-1">{selectedDateStr}</span>
+                                                <h2 className="text-xl font-black text-slate-800 font-bold">배차 예약 정보 입력</h2>
                                             </div>
+                                        </div>
 
-                                            <div className="space-y-4">
-                                                {vehiclesList.map(v => {
-                                                    const reservedData = currentDayData.reserved || {}; 
+                                        <div className="space-y-4">
+                                            {vehiclesList.map(v => {
+                                                const reservedData = currentDayData.reserved || {}; 
+                                                const isReserved = !!reservedData[v.id];
+                                                const info = isReserved ? reservedData[v.id] : {};
+                                                
+                                                const currentDispatch = getDispatchResult().find(d => d.vehicle.id === v.id);
+                                                const assignedDrivers = currentDispatch && currentDispatch.slots ? currentDispatch.slots.filter(s => s && !s.isExcluded && s.nm).map(s => s.nm).join(', ') : '';
+                                                const times = info.dailyTimes || [{ startTime: info.startTime || '09:00', endTime: info.endTime || '18:00', isHolidayWork: info.isHolidayWork || false }];
+
+                                                return (
+                                                    <div key={v.id} className={`p-4 rounded-2xl border-2 transition-all ${isReserved ? 'border-blue-500 bg-white shadow-md' : 'border-slate-100 bg-slate-50 opacity-70'} font-bold`}>
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <div className="flex flex-col">
                                                                 <label className="flex items-center gap-3 cursor-pointer">
                                                                     <input type="checkbox" checked={isReserved} onChange={() => toggleVehicleReservation(v.id)} className="w-5 h-5 rounded text-blue-600"/>
                                                                     <div><div className="text-sm font-black">{v.name}</div><div className="text-[10px] text-slate-400 font-mono">{v.plate}</div></div>
@@ -1821,7 +1817,6 @@
                                             })}
                                         </div>
                                     </div>
-                                    )}
                                 </div>
                             </>
                         )}
@@ -1894,10 +1889,38 @@
                                         className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-slate-800 bg-slate-50 text-center tracking-widest" 
                                         onKeyDown={(e) => { 
                                             if(e.key === 'Enter') {
-                                                if (e.target.value === adminPassword) { 
-                                                    if (modal.data?.action === 'unlockDispatch') { setIsDispatchUnlocked(true); setModal({ type: null }); }
-                                                    else { setModal({ type: modal.data?.nextModal }); }
-                                                } 
+                                                if (e.target.value === adminPassword) { setLocalIsAdmin(true); localStorage.setItem('isAdmin', 'true'); setModal({ type: null }); } 
+                                                else { setAlertMessage("비밀번호가 일치하지 않습니다."); }
+                                            } 
+                                        }}
+                                    />
+                                    <button 
+                                        onClick={() => {
+                                            if (document.getElementById('adminPwdInput').value === adminPassword) { setLocalIsAdmin(true); localStorage.setItem('isAdmin', 'true'); setModal({ type: null }); } 
+                                            else { setAlertMessage("비밀번호가 일치하지 않습니다."); }
+                                        }} 
+                                        className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold mt-2 hover:bg-slate-700 transition"
+                                    >로그인</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {modal.type === 'passwordPrompt' && (
+                        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl animate-[fadeIn_0.2s_ease-out]">
+                                <div className="p-4 border-b font-bold flex justify-between bg-slate-800 text-white">
+                                    <h3 className="flex items-center gap-2"><Icons.UserCheck className="w-4 h-4"/>{modal.data?.title} 접근 권한 확인</h3>
+                                    <button onClick={() => setModal({ type: null })} className="hover:text-slate-300"><Icons.X className="w-4 h-4"/></button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <p className="text-xs text-slate-500 font-bold text-center mb-2">해당 메뉴에 접근하려면 관리자 비밀번호를 입력하세요.</p>
+                                    <input 
+                                        type="password" id="promptPwdInput" placeholder="비밀번호 입력" 
+                                        className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-slate-800 bg-slate-50 text-center tracking-widest" 
+                                        onKeyDown={(e) => { 
+                                            if(e.key === 'Enter') {
+                                                if (e.target.value === adminPassword) { setModal({ type: modal.data?.nextModal }); } 
                                                 else { setAlertMessage("비밀번호가 일치하지 않습니다."); }
                                             } 
                                         }}
@@ -1905,51 +1928,8 @@
                                     />
                                     <button 
                                         onClick={() => {
-                                            if (document.getElementById('adminPwdInput').value === adminPassword) { 
-                                                if (modal.data?.action === 'unlockDispatch') { setIsDispatchUnlocked(true); setModal({ type: null }); }
-                                                else { setModal({ type: modal.data?.nextModal }); }
-                                            } 
+                                            if (document.getElementById('promptPwdInput').value === adminPassword) { setModal({ type: modal.data?.nextModal }); } 
                                             else { setAlertMessage("비밀번호가 일치하지 않습니다."); }
-                                        }} 
-                                        className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold mt-2 hover:bg-slate-700 transition"
-                                    >확인</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {modal.type === 'passwordPrompt' && (
-                        <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl animate-[fadeIn_0.2s_ease-out]">
-                                <div className="p-4 border-b font-bold flex justify-between bg-slate-800 text-white">
-                                    <h3 className="flex items-center gap-2"><Icons.Lock className="w-4 h-4"/>{modal.data?.title || '관리자 비밀번호 확인'}</h3>
-                                    <button onClick={() => setModal({ type: null })} className="hover:text-slate-300"><Icons.X className="w-4 h-4"/></button>
-                                </div>
-                                <div className="p-6 space-y-4">
-                                    <p className="text-xs text-slate-500 font-bold text-center mb-2">보안을 위해 관리자 비밀번호를 입력해주세요.</p>
-                                    <input 
-                                        type="password" id="promptPwdInput" placeholder="비밀번호 입력" autoFocus
-                                        className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-slate-800 bg-slate-50 text-center tracking-widest" 
-                                        onKeyDown={(e) => { 
-                                            if(e.key === 'Enter') {
-                                                if (e.target.value === adminPassword) { 
-                                                    if (modal.data?.action === 'unlockDispatch') { setIsDispatchUnlocked(true); setModal({ type: null }); }
-                                                    else if (modal.data?.nextModal) { setModal({ type: modal.data.nextModal }); }
-                                                    else { setModal({ type: null }); }
-                                                } 
-                                                else { setAlertMessage("비밀번호가 일치하지 않습니다."); e.target.value = ''; }
-                                            } 
-                                        }}
-                                    />
-                                    <button 
-                                        onClick={() => {
-                                            const pwd = document.getElementById('promptPwdInput').value;
-                                            if (pwd === adminPassword) { 
-                                                if (modal.data?.action === 'unlockDispatch') { setIsDispatchUnlocked(true); setModal({ type: null }); }
-                                                else if (modal.data?.nextModal) { setModal({ type: modal.data.nextModal }); }
-                                                else { setModal({ type: null }); }
-                                            } 
-                                            else { setAlertMessage("비밀번호가 일치하지 않습니다."); document.getElementById('promptPwdInput').value = ''; }
                                         }} 
                                         className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold mt-2 hover:bg-slate-700 transition"
                                     >확인</button>
