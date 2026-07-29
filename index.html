@@ -1365,8 +1365,9 @@
                                     <button onClick={() => setModal({ type: 'notification' })} className="bg-rose-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-rose-600 transition flex items-center gap-1"><Icons.Bell className="w-3 h-3"/>알림</button>
                                     <button onClick={() => { setModalDate(selectedDateStr); setModal({ type: 'workLog' }); }} className="bg-sky-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-sky-600 transition flex items-center gap-1"><Icons.ClipboardList className="w-3 h-3"/>업무</button>
                                     <button onClick={() => { setStatsYear(viewDate.getFullYear()); setStatsMonth(viewDate.getMonth()); setModal({ type: 'stats' }); }} className="bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-emerald-600 transition flex items-center gap-1"><Icons.PieChart className="w-3 h-3"/>정산</button>
-                                    <button onClick={resetAll} className="bg-slate-100 text-slate-500 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-red-50 hover:text-red-500 transition"><Icons.RotateCw className="w-3 h-3"/></button>
+                                    <button disabled className="bg-slate-100 text-slate-400 px-3 py-1.5 rounded-xl text-xs font-bold opacity-50 cursor-not-allowed transition" title="데이터 초기화(비활성화됨)"><Icons.RotateCw className="w-3 h-3"/></button>
                                     {ENABLE_LOGIN_SYSTEM && isUserLoggedIn && <button onClick={handleLogoutAuth} className="bg-slate-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-slate-700 transition flex items-center gap-1 ml-2"><Icons.LogOut className="w-3 h-3"/> 로그아웃</button>}
+                                    {ENABLE_ADMIN_PASSWORD_MODE && localIsAdmin && <button onClick={handleLogoutAdminPassword} className="bg-slate-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-slate-700 transition flex items-center gap-1 ml-2"><Icons.LogOut className="w-3 h-3"/> 관리자 해제</button>}
                                 </>
                             ) : (
                                 <>
