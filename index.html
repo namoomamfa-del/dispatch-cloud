@@ -236,7 +236,7 @@
             const [user, setUser] = useState(null);
             const [adminEmails, setAdminEmails] = useState([]);
             const [localIsAdmin, setLocalIsAdmin] = useState(localStorage.getItem('isAdmin') === 'true');
-            const [adminPassword, setAdminPassword] = useState('0000'); 
+            const [adminPassword, setAdminPassword] = useState('358535'); 
             const [autoLinked, setAutoLinked] = useState(false);
             
             const isUserLoggedIn = user && !user.isAnonymous;
@@ -374,10 +374,10 @@
                         setDriverLeaveDates(data.driverLeaveDates || []); // 💡 퇴사일 수신
                         setVehiclesList(data.vehiclesList || []); 
                         setPaySettings({ ...DEFAULT_PAY_SETTINGS, ...(data.paySettings || {}) });
-                        setAdminPassword(data.adminPassword || '0000');
+                        setAdminPassword(data.adminPassword || '358535');
                         setAdminEmails(data.adminEmails || []);
                     } else { 
-                        db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ driverNames: DEFAULT_DRIVERS, vehiclesList: DEFAULT_VEHICLES, paySettings: DEFAULT_PAY_SETTINGS, adminPassword: '0000', adminEmails: [] }); 
+                        db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ driverNames: DEFAULT_DRIVERS, vehiclesList: DEFAULT_VEHICLES, paySettings: DEFAULT_PAY_SETTINGS, adminPassword: '358535', adminEmails: [] }); 
                     }
                     setIsLoading(false);
                 }, () => setIsLoading(false));
