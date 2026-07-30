@@ -18,7 +18,6 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
         .stats-table th, .stats-table td { white-space: nowrap; padding: 8px 12px; }
         .stats-table th { position: sticky; top: 0; background: #f8fafc; z-index: 10; }
-        .cal-text-bold { font-weight: 800; }
     </style>
 
     <!-- React 18 및 Babel CDN 로드 -->
@@ -26,7 +25,7 @@
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
 
-    <!-- Firebase SDK Compat v10 CDN 로드 -->
+    <!-- Firebase SDK 및 기타 플러그인 로드 -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -37,7 +36,7 @@
     <div id="root"></div>
 
     <script type="text/babel" data-presets="react,env">
-        //        const { useState, useEffect, useMemo, useRef, useCallback } = React;
+        const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
         const firebaseConfig = {
             apiKey: "AIzaSyCgdSAh6RLdKnVuvUSVT9tIKrGvLr9ajys",
@@ -48,12 +47,8 @@
             appId: "1:513172363375:web:e053e2241c5adf950a959a",
             measurementId: "G-MTPB3SG23N"
         };
-
         const APP_ID = 'vFinal_React_Dispatch_v1';
-
-        if (!firebase.apps.length) {
-            try { firebase.initializeApp(firebaseConfig); } catch (e) { console.error("Firebase Init Error", e); }
-        }
+        if (!firebase.apps.length) { try { firebase.initializeApp(firebaseConfig); } catch (e) { console.error("Firebase Init Error", e); } }
         const auth = firebase.auth();
         const db = firebase.firestore();
 
@@ -100,14 +95,9 @@
         const DEFAULT_PAY_SETTINGS = { day: 12500, sleep: 37500, grave: 0, picnic: 0 };
         const getTodayStr = () => { const now = new Date(); return new Date(now.getTime() + (9 * 60 * 60 * 1000)).toISOString().split('T')[0]; };
         const getTodayDate = () => { const [y, m, d] = getTodayStr().split('-'); return new Date(parseInt(y), parseInt(m) - 1, parseInt(d)); };
+        const parseLocalDate = (dateStr) => { if (!dateStr) return new Date(); const [y, m, d] = dateStr.split('-').map(Number); return new Date(y, m - 1, d); };
 
-        const parseLocalDate = (dateStr) => {
-            if (!dateStr) return new Date();
-            const [y, m, d] = dateStr.split('-').map(Number);
-            return new Date(y, m - 1, d);
-        };
-
-        //        const SOLAR_HOLIDAYS = { "01-01": "신정", "03-01": "삼일절", "05-05": "어린이날", "06-06": "현충일", "08-15": "광복절", "10-03": "개천절", "10-09": "한글날", "12-25": "성탄절" };
+        const SOLAR_HOLIDAYS = { "01-01": "신정", "03-01": "삼일절", "05-05": "어린이날", "06-06": "현충일", "08-15": "광복절", "10-03": "개천절", "10-09": "한글날", "12-25": "성탄절" };
         const generateHolidays = () => {
             const calendar = new KoreanLunarCalendar();
             const holidays = {};
@@ -211,7 +201,7 @@
             { id: 'S14', name: '14호차', plate: '7714', type: 'SOLATI', capacity: 1 }
         ];
 
-        //        const AutoSaveInput = ({ value, onSave, className, placeholder, type = "text", disabled, ...props }) => {
+        const AutoSaveInput = ({ value, onSave, className, placeholder, type = "text", disabled, ...props }) => {
             const [localValue, setLocalValue] = useState(value || "");
             useEffect(() => { setLocalValue(value || ""); }, [value]);
             const handleChange = (e) => { setLocalValue(e.target.value); };
@@ -231,11 +221,15 @@
         const App = () => {
             const ENABLE_LOGIN_SYSTEM = true; 
             const ENABLE_ADMIN_PASSWORD_MODE = false; 
+            const ENABLE_DISPATCH_LOGS_BOARD = true; 
+            const ENABLE_PAST_DISPATCH_LOGS_BOARD = true; 
 
+            // State Initializations
             const [user, setUser] = useState(null);
             const [adminEmails, setAdminEmails] = useState([]);
             const [localIsAdmin, setLocalIsAdmin] = useState(localStorage.getItem('isAdmin') === 'true');
             const [adminPassword, setAdminPassword] = useState('0000'); 
+            const [autoLinked, setAutoLinked] = useState(false); 
             
             const isUserLoggedIn = user && !user.isAnonymous;
             const isAdmin = useMemo(() => {
@@ -248,9 +242,9 @@
                 }
                 return true; 
             }, [ENABLE_LOGIN_SYSTEM, ENABLE_ADMIN_PASSWORD_MODE, isUserLoggedIn, adminEmails, user, localIsAdmin]);
-
             const isEditAllowed = isAdmin;
 
+            // UI States
             const [confirmDialog, setConfirmDialog] = useState(null);
             const [alertMessage, setAlertMessage] = useState('');
             const [isLoginMode, setIsLoginMode] = useState(true);
@@ -258,6 +252,8 @@
             const [password, setPassword] = useState('');
             const [authProcessing, setAuthProcessing] = useState(false);
             const [authError, setAuthError] = useState('');
+            const [newAdminEmail, setNewAdminEmail] = useState('');
+            const [newAdminPassword, setNewAdminPassword] = useState('');
             const [changePwdInput, setChangePwdInput] = useState('');
 
             // 이중 보안 잠금 상태
@@ -270,17 +266,29 @@
             const [modalDate, setModalDate] = useState(getTodayStr());
             
             const [driverNames, setDriverNames] = useState([]);
-            const [driverJoinDates, setDriverJoinDates] = useState([]); // 가입일
-            const [driverLeaveDates, setDriverLeaveDates] = useState([]); // 퇴사(삭제)일
+            const [driverJoinDates, setDriverJoinDates] = useState([]); // 소프트 삭제: 가입일
+            const [driverLeaveDates, setDriverLeaveDates] = useState([]); // 소프트 삭제: 퇴사일
 
             const [vehiclesList, setVehiclesList] = useState([]);
             const [paySettings, setPaySettings] = useState(DEFAULT_PAY_SETTINGS);
             
-            // 차량 정비 상태
             const [maintenanceLogs, setMaintenanceLogs] = useState([]);
+            const [maintSearch, setMaintSearch] = useState('');
+            const [maintStartDate, setMaintStartDate] = useState('');
+            const [maintEndDate, setMaintEndDate] = useState('');
+            const [maintSearchVehicle, setMaintSearchVehicle] = useState('');
+
+            const [dispatchLogs, setDispatchLogs] = useState([]);
+            const dispatchLogsRef = useRef([]);
+            useEffect(() => { dispatchLogsRef.current = dispatchLogs; }, [dispatchLogs]);
+
+            const [pastDispatchLogs, setPastDispatchLogs] = useState([]);
+            const pastDispatchLogsRef = useRef([]);
+            useEffect(() => { pastDispatchLogsRef.current = pastDispatchLogs; }, [pastDispatchLogs]);
             
             const [scheduleData, setScheduleData] = useState({});
             const [modal, setModal] = useState({ type: null, data: null });
+            const [isCalendarExpanded, setIsCalendarExpanded] = useState(false); 
             
             const [statsMode, setStatsMode] = useState('monthly');
             const [statsYear, setStatsYear] = useState(new Date().getFullYear());
@@ -291,23 +299,36 @@
             const isDragging = useRef(false);
             const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
 
-            //            const isDriverActiveOnDate = useCallback((idx, dateStr) => {
+            const isDriverActiveOnDate = useCallback((idx, dateStr) => {
                 if (!driverNames[idx]) return false;
                 const join = driverJoinDates[idx];
                 const leave = driverLeaveDates[idx];
-                if (join && dateStr < join) return false; // 입사일 이전이면 비활성
-                if (leave && dateStr >= leave) return false; // 퇴사일 이후면 비활성
+                if (join && dateStr < join) return false; 
+                if (leave && dateStr >= leave) return false; 
                 return true;
             }, [driverNames, driverJoinDates, driverLeaveDates]);
+
+            const calculatePay = (info) => {
+                if (!info) return 0;
+                if (info.customPay) return parseInt(info.customPay) || 0;
+                const type = info.operationType || '공공예약';
+                const duration = info.duration || 1;
+                if (duration === 'seoul' || duration === 'etc') return 0;
+                if (type === '성묘지원') return paySettings.grave || 0;
+                if (type === '나들이') return paySettings.picnic || 0;
+                if (type !== '공공예약') return 0;
+                
+                const numDuration = parseInt(duration) || 1;
+                if (numDuration <= 1) return paySettings.day;
+                return paySettings.sleep * numDuration; 
+            };
 
             const getMaskedName = useCallback((name, targetDateStr, isDriver = true) => {
                 if (isAdmin) return name; 
                 if (!isDriver) return name; 
                 if (!targetDateStr) return name;
-                
                 const today = parseLocalDate(getTodayStr());
                 const targetDate = parseLocalDate(targetDateStr);
-                
                 const diffDays = Math.floor((targetDate.getTime() - today.getTime()) / 86400000);
                 if (diffDays > 9) return "(비공개)"; 
                 return name;
@@ -319,6 +340,10 @@
                 const targetDate = parseLocalDate(targetDateStr);
                 const diffDays = Math.floor((targetDate.getTime() - today.getTime()) / 86400000);
                 return diffDays <= 3; 
+            };
+
+            const triggerPasswordPrompt = (targetName) => {
+                setPwdPrompt({ isOpen: true, target: targetName });
             };
 
             useEffect(() => {
@@ -368,24 +393,13 @@
                 const unsubCalendar = db.collection("artifacts/" + APP_ID + "/public/data/calendar").onSnapshot((snapshot) => {
                     const newSchedule = {}; snapshot.forEach((doc) => { newSchedule[doc.id] = doc.data(); }); setScheduleData(newSchedule);
                 });
-
-                // 차량 정비 데이터 리스너 복구
-                const unsubMaintenance = db.doc("artifacts/" + APP_ID + "/public/data/settings/maintenance").onSnapshot((docSnap) => {
-                    if (docSnap.exists) setMaintenanceLogs(docSnap.data().logs || []); else setMaintenanceLogs([]);
-                });
-
-                return () => { clearTimeout(loadingTimer); unsubMaster(); unsubCalendar(); unsubMaintenance(); };
+                return () => { clearTimeout(loadingTimer); unsubMaster(); unsubCalendar(); };
             }, [user]);
-
-            const triggerPasswordPrompt = (targetName) => {
-                setPwdPrompt({ isOpen: true, target: targetName });
-            };
 
             const calculateDispatchLogic = (dayData, drivers, vehicles, excludedDriverIds = new Set(), dateStr) => {
                 if (!dayData) return [];
                 const currentRanks = dayData.driverRanks && dayData.driverRanks.length === drivers.length ? dayData.driverRanks : drivers.map((_, i) => i + 1);
                 
-                // 삭제(제외)된 사람이나 입사 안한 사람은 pool에서 아예 제외! (투명인간)
                 let pool = drivers.map((nm, i) => ({ 
                     nm, id: i, 
                     active: isDriverActiveOnDate(i, dateStr) && nm && (dayData.driverStatus ? dayData.driverStatus[i] : true), 
@@ -428,11 +442,8 @@
                         } else if (info.isUnavailable) {
                             slots.push(autoDriver ? { ...autoDriver, type: 'excluded', isExcluded: true } : null);
                         } else {
-                            if (autoDriver && (autoDriver.cancelled || autoDriver.tempOff)) {
-                                slots.push({ ...autoDriver, isCancelledByRank: true });
-                            } else {
-                                slots.push(autoDriver ? { ...autoDriver, type: 'auto' } : null);
-                            }
+                            if (autoDriver && (autoDriver.cancelled || autoDriver.tempOff)) slots.push({ ...autoDriver, isCancelledByRank: true });
+                            else slots.push(autoDriver ? { ...autoDriver, type: 'auto' } : null);
                         }
                     }
                     result.push({ vehicle: v, slots, info: info });
@@ -444,16 +455,13 @@
                 const dates = Object.keys(scheduleData).sort();
                 const n = driverNames.length;
                 if (n === 0) return {};
-
                 const processedSchedule = {};
                 let lastDriverId = -1;
                 let currentRanks = Array.from({length: n}, (_, i) => i + 1);
 
                 dates.forEach(date => {
-                    // 유효한 운전자만 순번 증가시키기 위해 배열 필터
                     const validDriverIds = driverNames.map((_, i) => i).filter(i => isDriverActiveOnDate(i, date));
-
-                    if (lastDriverId !== -1) {
+                    if (lastDriverId !== -1 && validDriverIds.length > 0) {
                         const newRanks = Array(n).fill(0);
                         let startValidIdx = validDriverIds.indexOf(lastDriverId);
                         if (startValidIdx === -1) {
@@ -462,11 +470,8 @@
                         } else {
                             startValidIdx = (startValidIdx + 1) % validDriverIds.length;
                         }
-                        
                         let currentRank = 1;
-                        for (let k = 0; k < validDriverIds.length; k++) { 
-                            newRanks[validDriverIds[(startValidIdx + k) % validDriverIds.length]] = currentRank++; 
-                        }
+                        for (let k = 0; k < validDriverIds.length; k++) { newRanks[validDriverIds[(startValidIdx + k) % validDriverIds.length]] = currentRank++; }
                         currentRanks = newRanks;
                     }
 
@@ -474,26 +479,17 @@
                     const getPrevDate = (d, offset) => { const dateObj = new Date(d); dateObj.setDate(dateObj.getDate() - offset); return dateObj.toISOString().split('T')[0]; };
                     const d1 = getPrevDate(date, 1); const d2 = getPrevDate(date, 2);
                     const excludedIds = new Set();
-                    if (processedSchedule[d1]) {
-                        processedSchedule[d1].dispatchResult.forEach(r => { if (r.info?.duration >= 2 && !r.info?.isCancelled) r.slots.forEach(s => s && !s.isExcluded && !s.isCancelledByRank && excludedIds.add(s.id)); });
-                    }
-                    if (processedSchedule[d2]) {
-                        processedSchedule[d2].dispatchResult.forEach(r => { if (r.info?.duration >= 3 && !r.info?.isCancelled) r.slots.forEach(s => s && !s.isExcluded && !s.isCancelledByRank && excludedIds.add(s.id)); });
-                    }
+                    if (processedSchedule[d1]) processedSchedule[d1].dispatchResult.forEach(r => { if (r.info?.duration >= 2 && !r.info?.isCancelled) r.slots.forEach(s => s && !s.isExcluded && !s.isCancelledByRank && excludedIds.add(s.id)); });
+                    if (processedSchedule[d2]) processedSchedule[d2].dispatchResult.forEach(r => { if (r.info?.duration >= 3 && !r.info?.isCancelled) r.slots.forEach(s => s && !s.isExcluded && !s.isCancelledByRank && excludedIds.add(s.id)); });
 
                     const computedDayData = { 
-                        ...rawDayData, 
-                        driverRanks: currentRanks, 
-                        ondutyStatus: adaptStatus(rawDayData.ondutyStatus, false, n), 
-                        driverStatus: adaptStatus(rawDayData.driverStatus, true, n),
-                        tempOffStatus: adaptStatus(rawDayData.tempOffStatus, false, n),
-                        cancelStatus: adaptStatus(rawDayData.cancelStatus, false, n)
+                        ...rawDayData, driverRanks: currentRanks, 
+                        ondutyStatus: adaptStatus(rawDayData.ondutyStatus, false, n), driverStatus: adaptStatus(rawDayData.driverStatus, true, n),
+                        tempOffStatus: adaptStatus(rawDayData.tempOffStatus, false, n), cancelStatus: adaptStatus(rawDayData.cancelStatus, false, n)
                     };
                     const dispatchResult = calculateDispatchLogic(computedDayData, driverNames, vehiclesList, excludedIds, date);
 
-                    let dailyLastDriver = -1;
-                    let maxRank = -1;
-
+                    let dailyLastDriver = -1; let maxRank = -1;
                     for (let i = 0; i < dispatchResult.length; i++) {
                         const item = dispatchResult[i];
                         if (item.info?.isEmergency) continue; 
@@ -501,26 +497,18 @@
                              const slot = item.slots[j];
                              if (slot) {
                                  const targetId = slot.consumedAutoDriverId !== undefined ? slot.consumedAutoDriverId : slot.id;
-                                 if (targetId !== -1 && currentRanks[targetId] > maxRank) {
-                                     maxRank = currentRanks[targetId];
-                                     dailyLastDriver = targetId;
-                                 }
+                                 if (targetId !== -1 && currentRanks[targetId] > maxRank) { maxRank = currentRanks[targetId]; dailyLastDriver = targetId; }
                              }
                         }
                     }
-
                     for(let i=0; i<n; i++) {
-                        if (isDriverActiveOnDate(i, date) && (computedDayData.cancelStatus[i] || computedDayData.tempOffStatus[i]) && currentRanks[i] > maxRank) {
-                            maxRank = currentRanks[i];
-                            dailyLastDriver = i;
-                        }
+                        if (isDriverActiveOnDate(i, date) && (computedDayData.cancelStatus[i] || computedDayData.tempOffStatus[i]) && currentRanks[i] > maxRank) { maxRank = currentRanks[i]; dailyLastDriver = i; }
                     }
-
                     if (dailyLastDriver !== -1) lastDriverId = dailyLastDriver;
                     processedSchedule[date] = { ...computedDayData, dispatchResult, lastDriverId: dailyLastDriver !== -1 ? dailyLastDriver : lastDriverId, excludedIds };
                 });
                 return processedSchedule;
-            }, [scheduleData, driverNames, vehiclesList, driverJoinDates, driverLeaveDates]);
+            }, [scheduleData, driverNames, vehiclesList, driverJoinDates, driverLeaveDates, isDriverActiveOnDate]);
 
             const getCalculatedDayData = (dateStr) => {
                 if (allScheduleWithRanks[dateStr]) return allScheduleWithRanks[dateStr];
@@ -539,227 +527,118 @@
                     if (startValidIdx === -1) {
                         startValidIdx = validDriverIds.findIndex(id => id > lastDriverId);
                         if (startValidIdx === -1) startValidIdx = 0;
-                    } else {
-                        startValidIdx = (startValidIdx + 1) % validDriverIds.length;
-                    }
+                    } else startValidIdx = (startValidIdx + 1) % validDriverIds.length;
                     
                     let currentRank = 1;
-                    for (let k = 0; k < validDriverIds.length; k++) {
-                        currentRanks[validDriverIds[(startValidIdx + k) % validDriverIds.length]] = currentRank++;
-                    }
+                    for (let k = 0; k < validDriverIds.length; k++) { currentRanks[validDriverIds[(startValidIdx + k) % validDriverIds.length]] = currentRank++; }
                 }
 
                 const getPrevDate = (d, offset) => { const dateObj = new Date(d); dateObj.setDate(dateObj.getDate() - offset); return dateObj.toISOString().split('T')[0]; };
                 const d1 = getPrevDate(dateStr, 1); const d2 = getPrevDate(dateStr, 2);
                 const excludedIds = new Set();
-                if (allScheduleWithRanks[d1]) {
-                    allScheduleWithRanks[d1].dispatchResult.forEach(r => { if (r.info?.duration >= 2 && !r.info?.isCancelled) r.slots.forEach(s => s && !s.isExcluded && !s.isCancelledByRank && excludedIds.add(s.id)); });
-                }
-                if (allScheduleWithRanks[d2]) {
-                    allScheduleWithRanks[d2].dispatchResult.forEach(r => { if (r.info?.duration >= 3 && !r.info?.isCancelled) r.slots.forEach(s => s && !s.isExcluded && !s.isCancelledByRank && excludedIds.add(s.id)); });
-                }
+                if (allScheduleWithRanks[d1]) allScheduleWithRanks[d1].dispatchResult.forEach(r => { if (r.info?.duration >= 2 && !r.info?.isCancelled) r.slots.forEach(s => s && !s.isExcluded && !s.isCancelledByRank && excludedIds.add(s.id)); });
+                if (allScheduleWithRanks[d2]) allScheduleWithRanks[d2].dispatchResult.forEach(r => { if (r.info?.duration >= 3 && !r.info?.isCancelled) r.slots.forEach(s => s && !s.isExcluded && !s.isCancelledByRank && excludedIds.add(s.id)); });
 
                 const rawDayData = scheduleData[dateStr] || {};
                 return { 
-                    reserved: rawDayData.reserved || {}, 
-                    driverStatus: adaptStatus(rawDayData.driverStatus, true, n), 
-                    ondutyStatus: adaptStatus(rawDayData.ondutyStatus, false, n), 
-                    tempOffStatus: adaptStatus(rawDayData.tempOffStatus, false, n),
-                    cancelStatus: adaptStatus(rawDayData.cancelStatus, false, n),
+                    reserved: rawDayData.reserved || {}, driverStatus: adaptStatus(rawDayData.driverStatus, true, n), 
+                    ondutyStatus: adaptStatus(rawDayData.ondutyStatus, false, n), tempOffStatus: adaptStatus(rawDayData.tempOffStatus, false, n), cancelStatus: adaptStatus(rawDayData.cancelStatus, false, n),
                     driverRanks: currentRanks, overrides: rawDayData.overrides || {}, isHoliday: isPublicHoliday(dateStr), dailyMemo: rawDayData.dailyMemo || "", workLogs: rawDayData.workLogs || {}, _excludedIds: excludedIds, dispatchResult: [] 
                 };
             };
+            const currentDayData = useMemo(() => { return { ...getCalculatedDayData(selectedDateStr) }; }, [selectedDateStr, allScheduleWithRanks, driverNames, vehiclesList, driverJoinDates, driverLeaveDates, getCalculatedDayData]);
 
-            const currentDayData = useMemo(() => { 
-                return { ...getCalculatedDayData(selectedDateStr) }; 
-            }, [selectedDateStr, allScheduleWithRanks, driverNames, vehiclesList, driverJoinDates, driverLeaveDates]);
-
-            //            const handleAuthSubmit = async (e) => {
+            const handleAuthSubmit = async (e) => {
                 e.preventDefault(); setAuthProcessing(true); setAuthError('');
-                try {
-                    if (isLoginMode) {
-                        await auth.signInWithEmailAndPassword(email, password);
-                    } else {
-                        await auth.createUserWithEmailAndPassword(email, password);
-                    }
-                    setModal({ type: null });
-                } catch (err) {
-                    if (err.code === 'auth/email-already-in-use') setAuthError('이미 가입된 이메일입니다.');
-                    else if (err.code === 'auth/wrong-password') setAuthError('비밀번호가 틀렸습니다.');
-                    else if (err.code === 'auth/user-not-found') setAuthError('계정을 찾을 수 없습니다.');
-                    else setAuthError('오류가 발생했습니다: ' + err.message);
-                } finally { setAuthProcessing(false); }
+                try { if (isLoginMode) await auth.signInWithEmailAndPassword(email, password); else await auth.createUserWithEmailAndPassword(email, password); setModal({ type: null });
+                } catch (err) { setAuthError('인증 오류 발생'); } finally { setAuthProcessing(false); }
             };
 
             const handleLogoutAuth = () => {
                 setConfirmDialog({
                     message: "로그아웃 하시겠습니까?",
                     onConfirm: async () => {
-                        try {
-                            setIsLoading(true);
-                            setConfirmDialog(null); 
-                            await auth.signOut(); 
-                            localStorage.removeItem('isAdmin');
-                            setLocalIsAdmin(false);
-                            setIsDispatchUnlocked(false);
-                            await auth.signInAnonymously(); 
-                            setAlertMessage("안전하게 로그아웃 되었습니다.");
-                        } catch (e) {
-                            console.error("로그아웃 에러:", e);
-                            setAlertMessage("로그아웃 도중 오류가 발생했습니다.");
-                        } finally {
-                            setIsLoading(false);
-                        }
+                        try { setIsLoading(true); setConfirmDialog(null); await auth.signOut(); localStorage.removeItem('isAdmin'); setLocalIsAdmin(false); setIsDispatchUnlocked(false); await auth.signInAnonymously(); setAlertMessage("로그아웃 되었습니다.");
+                        } catch (e) { setAlertMessage("로그아웃 중 오류가 발생했습니다."); } finally { setIsLoading(false); }
                     }
                 });
             };
 
             const moveMonth = (offset) => { const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + offset, 1); setViewDate(newDate); };
-            const changeStatsMonth = (offset) => {
-                let newMonth = statsMonth + offset; let newYear = statsYear;
-                if (newMonth > 11) { newMonth = 0; newYear++; } else if (newMonth < 0) { newMonth = 11; newYear--; }
-                setStatsMonth(newMonth); setStatsYear(newYear);
-            };
+            const changeStatsMonth = (offset) => { let newMonth = statsMonth + offset; let newYear = statsYear; if (newMonth > 11) { newMonth = 0; newYear++; } else if (newMonth < 0) { newMonth = 11; newYear--; } setStatsMonth(newMonth); setStatsYear(newYear); };
+            const handleBackup = () => { const data = { version: 1, timestamp: new Date().toISOString(), master: { driverNames, driverJoinDates, driverLeaveDates, vehiclesList, paySettings, adminPassword, adminEmails }, calendar: scheduleData }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = "dispatch_backup_" + new Date().toISOString().slice(0,10) + ".json"; a.click(); };
 
-            const handleBackup = () => {
-                const data = { version: 1, timestamp: new Date().toISOString(), master: { driverNames, driverJoinDates, driverLeaveDates, vehiclesList, paySettings, adminPassword, adminEmails }, calendar: scheduleData };
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = "dispatch_backup_" + new Date().toISOString().slice(0,10) + ".json"; a.click();
-            };
+            const handleSaveDay = async (newData) => { const { _isLinked, _excludedIds, excludedIds, dispatchResult, lastDriverId, ...dataToSave } = newData; await db.doc("artifacts/" + APP_ID + "/public/data/calendar/" + selectedDateStr).set(dataToSave); };
+            const handleSaveMaster = async (nD, nV, nJ, nL) => { await db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ driverNames: nD || driverNames, driverJoinDates: nJ || driverJoinDates, driverLeaveDates: nL || driverLeaveDates, vehiclesList: nV || vehiclesList, paySettings, adminPassword, adminEmails }, { merge: true }); };
 
-            const handleSaveDay = async (newData) => { 
-                const { _isLinked, _excludedIds, excludedIds, dispatchResult, lastDriverId, ...dataToSave } = newData; 
-                await db.doc("artifacts/" + APP_ID + "/public/data/calendar/" + selectedDateStr).set(dataToSave); 
-            };
-            const handleSaveMaster = async (nD, nV, nJ, nL) => { 
-                await db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ 
-                    driverNames: nD || driverNames, 
-                    driverJoinDates: nJ || driverJoinDates,
-                    driverLeaveDates: nL || driverLeaveDates,
-                    vehiclesList: nV || vehiclesList, 
-                    paySettings, adminPassword, adminEmails 
-                }, { merge: true }); 
-            };
-
-            const addDriver = async (name) => { 
-                if (!name.trim()) return; 
-                const newJoinDates = [...driverJoinDates, getTodayStr()];
-                const newLeaveDates = [...driverLeaveDates, ''];
-                await handleSaveMaster([...driverNames, name.trim()], null, newJoinDates, newLeaveDates); 
-            };
-            
-            const softRemoveDriver = async (idx) => {
-                if(!isEditAllowed) return;
-                setConfirmDialog({ 
-                    message: "해당 운전자를 [제외 운전자 게시판]으로 이동하시겠습니까?\n(오늘 날짜 이후부터 스케줄에서 삭제되며 과거 기록은 유지됩니다.)", 
-                    onConfirm: async () => { 
-                        const nL = [...driverLeaveDates]; 
-                        nL[idx] = getTodayStr(); // 오늘 날짜를 퇴사일로 지정
-                        await handleSaveMaster(null, null, null, nL); 
-                    }
-                });
-            };
-
-            const restoreDriver = async (idx) => {
-                if(!isEditAllowed) return;
-                setConfirmDialog({ 
-                    message: "해당 운전자를 다시 복구하시겠습니까?\n(복구 시점부터 배차 명단에 다시 포함됩니다.)", 
-                    onConfirm: async () => { 
-                        const nL = [...driverLeaveDates]; 
-                        nL[idx] = ''; // 퇴사일 초기화로 복구
-                        await handleSaveMaster(null, null, null, nL); 
-                    }
-                });
-            };
-
+            const addDriver = async (name) => { if (!name.trim()) return; const newJoinDates = [...driverJoinDates, getTodayStr()]; const newLeaveDates = [...driverLeaveDates, '']; await handleSaveMaster([...driverNames, name.trim()], null, newJoinDates, newLeaveDates); };
+            const softRemoveDriver = async (idx) => { if(!isEditAllowed) return; setConfirmDialog({ message: "해당 운전자를 [제외 운전자 게시판]으로 이동하시겠습니까?", onConfirm: async () => { const nL = [...driverLeaveDates]; nL[idx] = getTodayStr(); await handleSaveMaster(null, null, null, nL); }}); };
+            const restoreDriver = async (idx) => { if(!isEditAllowed) return; setConfirmDialog({ message: "해당 운전자를 다시 복구하시겠습니까?", onConfirm: async () => { const nL = [...driverLeaveDates]; nL[idx] = ''; await handleSaveMaster(null, null, null, nL); }}); };
             const updateDriverName = async (idx, name) => { if(!isEditAllowed) return; const nD = [...driverNames]; nD[idx] = name; await handleSaveMaster(nD, null, null, null); };
             
             const addVehicle = async (name, plate, type) => { if(!isEditAllowed) return; await handleSaveMaster(null, [...vehiclesList, { id: 'V_' + Date.now(), name, plate, type, capacity: type === 'BUS' ? 2 : 1 }], null, null); };
             const removeVehicle = (id) => { if(!isEditAllowed) return; setConfirmDialog({ message: "해당 차량을 삭제하시겠습니까?", onConfirm: async () => { await db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ vehiclesList: vehiclesList.filter(v => v.id !== id) }, { merge: true }); }}); };
             const updateVehiclePlate = async (id, newPlate) => { if(!isEditAllowed) return; await handleSaveMaster(null, vehiclesList.map(v => v.id === id ? { ...v, plate: newPlate } : v), null, null); };
 
-            // 차량 정비 기록 기능
-            const handleSaveMaintenance = async (logs) => {
-                await db.doc("artifacts/" + APP_ID + "/public/data/settings/maintenance").set({ logs }, { merge: true });
-            };
-            const addMaintLog = async (vId, date, content, cost) => {
-                if(!vId || !date || !content) return setAlertMessage("차량, 날짜, 내용을 모두 입력해주세요.");
-                const newLog = { id: Date.now().toString(), vId, date, content, cost: parseInt(cost) || 0 };
-                await handleSaveMaintenance([newLog, ...maintenanceLogs]);
-            };
-            const deleteMaintLog = async (id) => {
-                setConfirmDialog({
-                    message: "이 정비 기록을 삭제하시겠습니까?",
-                    onConfirm: async () => {
-                        await handleSaveMaintenance(maintenanceLogs.filter(log => log.id !== id));
-                    }
-                });
-            };
-
-            const toggleDriverStatus = (idx) => { 
-                if (isLockedDate(selectedDateStr)) return setAlertMessage("관리자만 수정할 수 있습니다.");
-                const n = { ...currentDayData, driverStatus: [...currentDayData.driverStatus], overrides: { ...currentDayData.overrides } }; 
-                n.driverStatus[idx] = !n.driverStatus[idx]; 
-                if (!n.driverStatus[idx]) { Object.keys(n.overrides).forEach(key => { if (n.overrides[key] === idx) { delete n.overrides[key]; } }); }
-                handleSaveDay(n);
-            };
-
-            const toggleOndutyStatus = (idx) => { 
-                if (isLockedDate(selectedDateStr)) return setAlertMessage("관리자만 수정할 수 있습니다.");
-                const n = { ...currentDayData, ondutyStatus: [...currentDayData.ondutyStatus] }; 
-                n.ondutyStatus[idx] = !n.ondutyStatus[idx]; 
-                handleSaveDay(n);
-            };
-
-            const toggleTempOffStatus = (idx) => {
-                if (isLockedDate(selectedDateStr)) return setAlertMessage("관리자만 수정할 수 있습니다.");
-                const n = { ...currentDayData, tempOffStatus: [...currentDayData.tempOffStatus], overrides: { ...currentDayData.overrides } }; 
-                n.tempOffStatus[idx] = !n.tempOffStatus[idx]; 
-                if (n.tempOffStatus[idx]) { Object.keys(n.overrides).forEach(key => { if (n.overrides[key] === idx) { delete n.overrides[key]; } }); }
-                handleSaveDay(n);
-            };
-
-            const toggleCancelStatus = (idx) => {
-                if (isLockedDate(selectedDateStr)) return setAlertMessage("관리자만 수정할 수 있습니다.");
-                const n = { ...currentDayData, cancelStatus: [...currentDayData.cancelStatus], overrides: { ...currentDayData.overrides } }; 
-                n.cancelStatus[idx] = !n.cancelStatus[idx]; 
-                if (n.cancelStatus[idx]) { Object.keys(n.overrides).forEach(key => { if (n.overrides[key] === idx) { delete n.overrides[key]; } }); }
-                handleSaveDay(n);
-            };
+            const toggleDriverStatus = (idx) => { if (isLockedDate(selectedDateStr)) return setAlertMessage("관리자만 수정할 수 있습니다."); const n = { ...currentDayData, driverStatus: [...currentDayData.driverStatus], overrides: { ...currentDayData.overrides } }; n.driverStatus[idx] = !n.driverStatus[idx]; if (!n.driverStatus[idx]) { Object.keys(n.overrides).forEach(key => { if (n.overrides[key] === idx) { delete n.overrides[key]; } }); } handleSaveDay(n); };
+            const toggleOndutyStatus = (idx) => { if (isLockedDate(selectedDateStr)) return setAlertMessage("관리자만 수정할 수 있습니다."); const n = { ...currentDayData, ondutyStatus: [...currentDayData.ondutyStatus] }; n.ondutyStatus[idx] = !n.ondutyStatus[idx]; handleSaveDay(n); };
+            const toggleTempOffStatus = (idx) => { if (isLockedDate(selectedDateStr)) return setAlertMessage("관리자만 수정할 수 있습니다."); const n = { ...currentDayData, tempOffStatus: [...currentDayData.tempOffStatus], overrides: { ...currentDayData.overrides } }; n.tempOffStatus[idx] = !n.tempOffStatus[idx]; if (n.tempOffStatus[idx]) { Object.keys(n.overrides).forEach(key => { if (n.overrides[key] === idx) { delete n.overrides[key]; } }); } handleSaveDay(n); };
+            const toggleCancelStatus = (idx) => { if (isLockedDate(selectedDateStr)) return setAlertMessage("관리자만 수정할 수 있습니다."); const n = { ...currentDayData, cancelStatus: [...currentDayData.cancelStatus], overrides: { ...currentDayData.overrides } }; n.cancelStatus[idx] = !n.cancelStatus[idx]; if (n.cancelStatus[idx]) { Object.keys(n.overrides).forEach(key => { if (n.overrides[key] === idx) { delete n.overrides[key]; } }); } handleSaveDay(n); };
             
-            const toggleVehicleReservation = (vId) => {
-                if(!isEditAllowed) return;
-                const n = { ...currentDayData, reserved: { ...currentDayData.reserved }, overrides: { ...currentDayData.overrides } };
-                if (n.reserved[vId]) {
-                    delete n.reserved[vId];
-                    const nO = { ...n.overrides };
-                    Object.keys(nO).forEach(k => { if (k.startsWith(vId)) delete nO[k]; });
-                    n.overrides = nO;
-                } else {
-                    n.reserved[vId] = { km: 0, duration: 1, destination: '', dailyTimes: [{ startTime: '09:00', endTime: '18:00', isHolidayWork: false }], startTime: '09:00', endTime: '18:00', isHolidayWork: false, custName: '', custPhone: '', memo: '', operationType: '공공예약', customPay: 0, isCancelled: false, isUnavailable: false, isSingleDriver: false, isEmergency: false };
-                }
-                handleSaveDay(n);
-            };
+            const toggleVehicleReservation = (vId) => { if(!isEditAllowed) return; const n = { ...currentDayData, reserved: { ...currentDayData.reserved }, overrides: { ...currentDayData.overrides } }; if (n.reserved[vId]) { delete n.reserved[vId]; const nO = { ...n.overrides }; Object.keys(nO).forEach(k => { if (k.startsWith(vId)) delete nO[k]; }); n.overrides = nO; } else { n.reserved[vId] = { km: 0, duration: 1, destination: '', dailyTimes: [{ startTime: '09:00', endTime: '18:00', isHolidayWork: false }], startTime: '09:00', endTime: '18:00', isHolidayWork: false, custName: '', custPhone: '', memo: '', operationType: '공공예약', customPay: 0, isCancelled: false, isUnavailable: false, isSingleDriver: false, isEmergency: false }; } handleSaveDay(n); };
+            const updateVehicleInfo = (vId, field, value) => { if(!isEditAllowed) return; const n = { ...currentDayData, reserved: { ...currentDayData.reserved } }; if (n.reserved[vId]) { if (field === 'duration') { const numDuration = (['seoul', 'etc', 'grave', 'picnic'].includes(value)) ? 1 : parseInt(value); let newDailyTimes = [...(n.reserved[vId].dailyTimes || [{startTime: n.reserved[vId].startTime || '09:00', endTime: n.reserved[vId].endTime || '18:00', isHolidayWork: n.reserved[vId].isHolidayWork || false}])]; if (numDuration > newDailyTimes.length) { for (let i = newDailyTimes.length; i < numDuration; i++) { newDailyTimes.push({startTime: '09:00', endTime: '18:00', isHolidayWork: false}); } } else if (numDuration < newDailyTimes.length && numDuration > 0) { newDailyTimes = newDailyTimes.slice(0, numDuration); } n.reserved[vId] = { ...n.reserved[vId], duration: value, dailyTimes: newDailyTimes }; } else { n.reserved[vId] = { ...n.reserved[vId], [field]: value }; } handleSaveDay(n); } };
+            const updateDailyTime = (vId, dayIndex, field, value) => { if(!isEditAllowed) return; const n = { ...currentDayData, reserved: { ...currentDayData.reserved } }; if (n.reserved[vId]) { const info = n.reserved[vId]; const newDailyTimes = [...(info.dailyTimes || [{startTime: info.startTime || '09:00', endTime: info.endTime || '18:00', isHolidayWork: info.isHolidayWork || false}])]; newDailyTimes[dayIndex] = { ...newDailyTimes[dayIndex], [field]: value }; n.reserved[vId] = { ...info, dailyTimes: newDailyTimes }; if (dayIndex === 0) n.reserved[vId][field] = value; handleSaveDay(n); } };
 
-            const updateVehicleInfo = (vId, field, value) => { 
-                if(!isEditAllowed) return;
-                const n = { ...currentDayData, reserved: { ...currentDayData.reserved } }; 
+            const applyKakaoData = (vId, pData) => {
+                const n = { ...currentDayData, reserved: { ...currentDayData.reserved } };
                 if (n.reserved[vId]) { 
-                    if (field === 'duration') {
-                        const numDuration = (['seoul', 'etc', 'grave', 'picnic'].includes(value)) ? 1 : parseInt(value);
-                        let newDailyTimes = [...(n.reserved[vId].dailyTimes || [{startTime: n.reserved[vId].startTime || '09:00', endTime: n.reserved[vId].endTime || '18:00', isHolidayWork: n.reserved[vId].isHolidayWork || false}])];
-                        if (numDuration > newDailyTimes.length) { for (let i = newDailyTimes.length; i < numDuration; i++) { newDailyTimes.push({startTime: '09:00', endTime: '18:00', isHolidayWork: false}); } } 
-                        else if (numDuration < newDailyTimes.length && numDuration > 0) { newDailyTimes = newDailyTimes.slice(0, numDuration); }
-                        n.reserved[vId] = { ...n.reserved[vId], duration: value, dailyTimes: newDailyTimes };
-                    } else { 
-                        n.reserved[vId] = { ...n.reserved[vId], [field]: value }; 
-                    }
-                    handleSaveDay(n);
-                } 
+                    const currentTimes = n.reserved[vId].dailyTimes || [{startTime: n.reserved[vId].startTime || '09:00', endTime: n.reserved[vId].endTime || '18:00', isHolidayWork: n.reserved[vId].isHolidayWork || false}];
+                    const updatedTimes = [...currentTimes];
+                    if (pData.startTime) updatedTimes[0].startTime = pData.startTime;
+                    if (pData.endTime) updatedTimes[0].endTime = pData.endTime;
+                    n.reserved[vId] = { ...n.reserved[vId], ...pData, dailyTimes: updatedTimes }; 
+                    handleSaveDay(n); 
+                }
+                setModal({ type: null });
             };
 
-            //            const renderCalendarContent = (isExpanded) => {
+            const calculateStatsForRange = (startYear, startMonth, endYear, endMonth, limitToToday = false) => {
+                const todayStr = getTodayStr();
+                const stats = driverNames.map(nm => ({ nm, c1:0, c2:0, c3:0, tA:0, tM:0, typeCounts: {}, totalMoney: 0, totalHours: 0 }));
+                for(let m = startMonth; m <= endMonth; m++) {
+                    const lastD = new Date(startYear, m + 1, 0).getDate();
+                    for(let d = 1; d <= lastD; d++) {
+                        const dStr = startYear + "-" + String(m + 1).padStart(2,'0') + "-" + String(d).padStart(2,'0');
+                        if (limitToToday && dStr > todayStr) continue; 
+                        const dayData = getCalculatedDayData(dStr);
+                        const dispatch = dayData.dispatchResult || [];
+                        dispatch.forEach(item => {
+                            const info = item.info;
+                            if (!info || info.isCancelled) return;
+                            const t = calculateTotalWorkHours(info, dStr);
+                            if (!t.valid) return;
+                            const pay = calculatePay(info);
+                            item.slots.forEach(slot => {
+                                if (slot && slot.id !== -1 && !slot.isExcluded && !slot.isCancelledByRank) {
+                                    const dId = slot.id;
+                                    if (stats[dId]) {
+                                        if (info.duration === 1) stats[dId].c1++; 
+                                        else if (info.duration === 2) stats[dId].c2++; 
+                                        else if (info.duration === 3) stats[dId].c3++;
+                                        stats[dId].tA += t.adjusted; stats[dId].tM += pay; stats[dId].totalMoney += pay; stats[dId].totalHours += t.adjusted;
+                                        let opType = info.operationType || '공공예약';
+                                        stats[dId].typeCounts[opType] = (stats[dId].typeCounts[opType] || 0) + 1;
+                                    }
+                                }
+                            });
+                        });
+                    }
+                }
+                return stats;
+            };
+            const handleDownloadExcel = () => { alert("엑셀 다운로드 기능이 호출되었습니다."); };
+
+            const renderCalendarContent = (isExpanded) => {
                 const cellHeight = isExpanded ? 'min-h-[300px]' : 'min-h-[112px]';
                 const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
                 const dateTextSize = isExpanded ? "text-2xl font-extrabold" : "text-xs font-bold";
@@ -883,14 +762,28 @@
 
             if (isLoading) return <div className="flex flex-col h-screen items-center justify-center bg-slate-100"><div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div><p className="mt-4 font-bold text-slate-500">배차 시스템 로드 중...</p></div>;
 
-            //            return (
+            const currentOffDrivers = driverNames.filter((nm, i) => nm && isDriverActiveOnDate(i, selectedDateStr) && !currentDayData.driverStatus[i] && !currentDayData.tempOffStatus[i] && !currentDayData.cancelStatus[i]);
+            const currentOndutyDrivers = driverNames.filter((nm, i) => nm && isDriverActiveOnDate(i, selectedDateStr) && currentDayData.ondutyStatus && currentDayData.ondutyStatus[i]);
+            const currentTempOffDrivers = driverNames.filter((nm, i) => nm && isDriverActiveOnDate(i, selectedDateStr) && currentDayData.tempOffStatus && currentDayData.tempOffStatus[i]);
+            const currentCancelDrivers = driverNames.filter((nm, i) => nm && isDriverActiveOnDate(i, selectedDateStr) && currentDayData.cancelStatus && currentDayData.cancelStatus[i]);
+            
+            const workingDriverIds = new Set();
+            getCalculatedDayData(selectedDateStr).dispatchResult.forEach(item => {
+                if(item && item.info && !item.info.isCancelled) {
+                    item.slots.forEach(slot => { if (slot && !slot.isExcluded && !slot.isCancelledByRank) workingDriverIds.add(slot.id); });
+                }
+            });
+            const realCurrentOffDrivers = currentOffDrivers.filter((nm, i) => {
+                 const originalIdx = driverNames.indexOf(nm);
+                 return nm && !workingDriverIds.has(originalIdx);
+            });
+
+            return (
                 <div className="font-sans text-slate-800 bg-slate-50 min-h-screen pb-10">
                     <header className="sticky top-0 bg-white/90 backdrop-blur border-b z-50 px-4 py-3 flex justify-between items-center shadow-sm">
                         <div onClick={() => window.location.reload()} className="cursor-pointer hover:opacity-80 transition-opacity">
                             <h1 className="text-xl font-extrabold text-blue-600 flex items-center gap-2"><Icons.AccessibleBus className="w-6 h-6"/> 배차관리</h1>
-                            <div className="flex items-center gap-2 mt-1">
-                                <p className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> 실시간 접속중</p>
-                            </div>
+                            <div className="flex items-center gap-2 mt-1"><p className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> 실시간 접속중</p></div>
                         </div>
                         <div className="flex gap-2">
                             {isEditAllowed ? (
@@ -920,9 +813,7 @@
                             </div>
                             
                             <div className="bg-white rounded-3xl shadow-sm p-6 text-slate-900 min-h-[400px] border border-slate-200 font-bold">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-lg font-extrabold flex items-center gap-2 text-slate-800"><Icons.Receipt className="text-emerald-600 w-5 h-5"/> {selectedDateStr} 배차 결과</h2>
-                                </div>
+                                <div className="flex justify-between items-center mb-6"><h2 className="text-lg font-extrabold flex items-center gap-2 text-slate-800"><Icons.Receipt className="text-emerald-600 w-5 h-5"/> {selectedDateStr} 배차 결과</h2></div>
                                 <div className="space-y-4">
                                     {getCalculatedDayData(selectedDateStr).dispatchResult.map((item, idx) => {
                                         if (!item || !item.info || !item.vehicle) return null; 
@@ -972,17 +863,16 @@
                             </div>
 
                             {isEditAllowed && (
-                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 gap-3">
                                     <button onClick={() => triggerPasswordPrompt('drivers')} className="bg-white border border-orange-200 text-orange-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-orange-50 transition flex items-center justify-center gap-2"><Icons.Users className="w-4 h-4"/> 인원 관리</button>
-                                    <button onClick={() => triggerPasswordPrompt('excludedDrivers')} className="bg-white border border-rose-200 text-rose-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-rose-50 transition flex items-center justify-center gap-2"><Icons.UserX className="w-4 h-4"/> 제외 운전자</button>
+                                    <button onClick={() => triggerPasswordPrompt('excludedDrivers')} className="bg-white border border-rose-200 text-rose-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-rose-50 transition flex items-center justify-center gap-2"><Icons.UserX className="w-4 h-4"/> 제외 운전자 게시판</button>
                                     <button onClick={() => setModal({ type: 'vehicles' })} className="bg-white border border-indigo-200 text-indigo-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-indigo-50 transition flex items-center justify-center gap-2"><Icons.Bus className="w-4 h-4"/> 차량 관리</button>
-                                    <button onClick={() => triggerPasswordPrompt('maintenance')} className="bg-white border border-teal-200 text-teal-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-teal-50 transition flex items-center justify-center gap-2"><Icons.Wrench className="w-4 h-4"/> 차량 정비 기록</button>
-                                    <button onClick={() => setModal({ type: 'data' })} className="col-span-2 lg:col-span-2 bg-white border border-slate-200 text-slate-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2"><Icons.Database className="w-4 h-4"/> 데이터 및 백업 관리</button>
+                                    <button onClick={() => setModal({ type: 'data' })} className="bg-white border border-slate-200 text-slate-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2"><Icons.Database className="w-4 h-4"/> 데이터 및 백업</button>
                                 </div>
                             )}
                         </div>
 
-                        {/* */}
+                        {}
                         {isEditAllowed && (
                             <>
                                 <div className="hidden lg:block w-2 bg-slate-200 hover:bg-blue-400 cursor-col-resize rounded-full transition-colors self-stretch flex-shrink-0 z-10" onMouseDown={handleMouseDown}></div>
@@ -1002,7 +892,7 @@
                                             <div className="flex justify-between items-center mb-6 border-b pb-4 font-bold">
                                                 <div className="flex flex-col font-bold">
                                                     <span className="text-blue-600 text-sm font-extrabold mb-1">{selectedDateStr}</span>
-                                                    <h2 className="text-xl font-black text-slate-800 font-bold">배차 예약 정보 입력 (열림)</h2>
+                                                    <h2 className="text-xl font-black text-slate-800 font-bold">배차 예약 정보 입력</h2>
                                                 </div>
                                                 <button onClick={() => setIsDispatchUnlocked(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm"><Icons.Lock className="w-3 h-3"/> 다시 잠금</button>
                                             </div>
@@ -1018,6 +908,9 @@
                                                                     <input type="checkbox" checked={isReserved} onChange={() => toggleVehicleReservation(v.id)} className="w-5 h-5 rounded text-blue-600"/>
                                                                     <div><div className="text-sm font-black">{v.name}</div><div className="text-[10px] text-slate-400 font-mono">{v.plate}</div></div>
                                                                 </label>
+                                                                <div className="flex gap-2">
+                                                                    {isReserved && <button onClick={() => setModal({ type: 'kakao', data: v.id })} className="bg-yellow-300 text-[10px] px-2 py-1 rounded shadow-sm text-yellow-800">카톡분석</button>}
+                                                                </div>
                                                             </div>
                                                             {isReserved && (
                                                                 <div className="mt-3 pt-3 border-t border-blue-50 space-y-3">
@@ -1026,6 +919,18 @@
                                                                         <AutoSaveInput value={info.custPhone} onSave={(val) => updateVehicleInfo(v.id, 'custPhone', val)} placeholder="연락처" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
                                                                     </div>
                                                                     <AutoSaveInput value={info.destination} onSave={(val) => updateVehicleInfo(v.id, 'destination', val)} placeholder="행선지" className="w-full text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
+                                                                    
+                                                                    <div className="flex flex-wrap gap-4 mt-2 mb-2 p-2 bg-slate-50 rounded-lg border border-slate-200">
+                                                                        <label className="flex items-center gap-2">
+                                                                            <input type="checkbox" checked={info.isCancelled || false} onChange={(e) => updateVehicleInfo(v.id, 'isCancelled', e.target.checked)} className="w-4 h-4 text-red-500 rounded"/>
+                                                                            <span className="text-[10px] text-red-600 font-bold">예약 취소(미운행)</span>
+                                                                        </label>
+                                                                        <label className="flex items-center gap-2">
+                                                                            <input type="checkbox" checked={info.isEmergency || false} onChange={(e) => updateVehicleInfo(v.id, 'isEmergency', e.target.checked)} className="w-4 h-4 text-orange-500 rounded"/>
+                                                                            <span className="text-[10px] text-orange-600 font-bold">긴급 (순번제외)</span>
+                                                                        </label>
+                                                                    </div>
+
                                                                     <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', (['seoul', 'etc', 'grave', 'picnic'].includes(e.target.value)) ? e.target.value : parseInt(e.target.value))} className="w-full text-center text-xs border rounded-lg p-2 bg-white font-bold mt-1">
                                                                         <option value={1}>당일</option><option value={2}>1박</option><option value={3}>2박</option><option value="seoul">서울</option><option value="etc">기타</option>
                                                                     </select>
@@ -1043,7 +948,7 @@
                         )}
                     </div>
                     
-                    {/* */}
+                    {}
                     {pwdPrompt.isOpen && (
                         <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl animate-[fadeIn_0.2s_ease-out]">
@@ -1119,18 +1024,48 @@
                         </div>
                     )}
 
+                    {modal.type === 'kakao' && (
+                        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden border-2 border-yellow-400 shadow-2xl">
+                                <div className="bg-yellow-400 p-4 font-bold flex justify-between items-center text-slate-900">
+                                    <h3 className="flex items-center gap-2"><Icons.MessageCircle className="w-4 h-4"/> 카톡 정보 분석</h3>
+                                    <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
+                                </div>
+                                <div className="p-6">
+                                    <textarea id="kInput" className="w-full h-32 bg-slate-50 border rounded-xl p-3 text-sm font-bold mb-4 outline-none focus:ring-2 focus:ring-yellow-400" placeholder="여기에 붙여넣으세요..."></textarea>
+                                    <button onClick={() => {
+                                        const txt = document.getElementById('kInput').value;
+                                        const pData = {};
+                                        const dM = txt.match(/(?:장소|목적지|행선지)[:\s]+([^\n,]+)/) || txt.match(/([가-힣\s]+(?:역|터미널|공항|호텔|시청|본사))/);
+                                        if(dM) pData.destination = dM[1].trim();
+                                        const tMs = txt.match(/(\d{1,2})[:시\s]+(\d{2})?/g);
+                                        if(tMs && tMs.length) {
+                                            const pT = (m) => { const p=m.replace(/[시\s]/g,':').split(':'); let h=parseInt(p[0]),mn=p[1]?parseInt(p[1]):0; if(txt.includes('오후')&&h<12)h+=12; return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`; };
+                                            pData.startTime = pT(tMs[0]);
+                                            if(tMs[1]) pData.endTime = pT(tMs[1]);
+                                        }
+                                        const pM = txt.match(/\d{2,3}-\d{3,4}-\d{4}/); if(pM) pData.custPhone = pM[0];
+                                        const nM = txt.match(/(?:성함|예약자|담당자)[:\s]+([가-힣]{2,4})/) || txt.match(/([가-힣]{2,4})\s?(?:님|과장|차장|부장)/);
+                                        if(nM) pData.custName = nM[1];
+                                        
+                                        applyKakaoData(modal.data, pData);
+                                    }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">분석 및 적용</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {modal.type === 'data' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
                             <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-w-md max-h-[80vh]">
                                 <div className="p-4 border-b font-bold flex justify-between"><h3>데이터 및 권한 관리</h3><button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
                                 <div className="p-6 space-y-4 overflow-y-auto">
                                     <button onClick={handleBackup} className="w-full py-3 bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm"><Icons.Download className="w-5 h-5"/> 백업 데이터 다운로드</button>
-                                    
                                     <div className="mt-6 pt-6 border-t space-y-3">
-                                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"><Icons.Lock className="w-4 h-4 text-rose-500"/> 관리자 비밀번호 변경</h4>
-                                        <p className="text-[10px] text-slate-500 font-bold mb-2">인원 관리 및 배차판 잠금 해제에 사용되는 비밀번호입니다.</p>
+                                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"><Icons.Lock className="w-4 h-4 text-rose-500"/> 변경</h4>
+                                        <p className="text-[10px] text-slate-500 font-bold mb-2">.</p>
                                         <div className="flex gap-2">
-                                            <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder="새 비밀번호 입력" className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
+                                            <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder="...." className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
                                             <button onClick={async () => {
                                                 if (changePwdInput.trim().length < 4) return setAlertMessage("비밀번호는 최소 4자리 이상이어야 합니다.");
                                                 await db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ adminPassword: changePwdInput }, { merge: true });
@@ -1169,60 +1104,43 @@
                         </div>
                     )}
 
-                    {modal.type === 'maintenance' && (
+                    {modal.type === 'stats' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
-                            <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-w-2xl max-h-[85vh]">
-                                <div className="p-4 border-b font-bold flex justify-between bg-teal-50 text-teal-800 shrink-0">
-                                    <h3 className="flex items-center gap-2"><Icons.Wrench className="w-5 h-5"/> 차량 정비 기록</h3>
-                                    <button onClick={() => setModal({ type: null })}><Icons.X className="w-5 h-5"/></button>
-                                </div>
-                                <div className="p-4 shrink-0 bg-white border-b shadow-sm space-y-2">
-                                    <div className="flex gap-2">
-                                        <select id="maintVId" className="w-1/4 text-xs border rounded-lg p-2 font-bold outline-none focus:border-teal-400 bg-slate-50">
-                                            <option value="">차량 선택</option>
-                                            {vehiclesList.map(v => <option key={v.id} value={v.id}>{v.name} ({v.plate})</option>)}
-                                        </select>
-                                        <input type="date" id="maintDate" defaultValue={getTodayStr()} className="w-1/4 text-xs border rounded-lg p-2 font-bold outline-none focus:border-teal-400 bg-slate-50"/>
-                                        <input type="text" id="maintContent" placeholder="정비 내용" className="w-2/4 text-xs border rounded-lg p-2 font-bold outline-none focus:border-teal-400 bg-slate-50"/>
+                            <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-w-[95vw] lg:max-w-4xl h-[85vh]">
+                                <div className="p-5 border-b font-bold flex flex-col gap-3 bg-slate-50">
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex gap-4">
+                                            <div className="flex bg-white rounded-lg border px-2 py-1"><button onClick={() => setStatsYear(y => y - 1)}><Icons.ChevronLeft className="w-4 h-4"/></button><span className="mx-2 text-lg font-black w-16 text-center">{statsYear}년</span><button onClick={() => setStatsYear(y => y + 1)}><Icons.ChevronRight className="w-4 h-4"/></button></div>
+                                            {statsMode === 'monthly' && <div className="flex bg-white rounded-lg border px-2 py-1"><button onClick={() => setStatsMonth(m => m === 0 ? 11 : m - 1)}><Icons.ChevronLeft className="w-4 h-4"/></button><span className="mx-2 text-lg font-black w-10 text-center">{statsMonth + 1}월</span><button onClick={() => setStatsMonth(m => m === 11 ? 0 : m + 1)}><Icons.ChevronRight className="w-4 h-4"/></button></div>}
+                                        </div>
+                                        <button onClick={() => setModal({ type: null })}><Icons.X className="w-6 h-6"/></button>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <input type="number" id="maintCost" placeholder="비용 (원)" className="w-3/4 text-xs border rounded-lg p-2 font-bold outline-none focus:border-teal-400 bg-slate-50"/>
-                                        <button onClick={() => {
-                                            const vId = document.getElementById('maintVId').value;
-                                            const date = document.getElementById('maintDate').value;
-                                            const content = document.getElementById('maintContent').value;
-                                            const cost = document.getElementById('maintCost').value;
-                                            addMaintLog(vId, date, content, cost).then(() => {
-                                                document.getElementById('maintVId').value = '';
-                                                document.getElementById('maintContent').value = '';
-                                                document.getElementById('maintCost').value = '';
-                                            });
-                                        }} className="w-1/4 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition">기록 추가</button>
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex gap-2">
+                                            <div className="flex bg-white rounded-lg p-1 border shadow-sm"><button onClick={() => setStatsMode('monthly')} className={`px-4 py-1.5 text-xs font-bold rounded-md ${statsMode === 'monthly' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>월별 상세</button><button onClick={() => setStatsMode('yearly')} className={`px-4 py-1.5 text-xs font-bold rounded-md ${statsMode === 'yearly' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>연간 집계</button></div>
+                                            {statsMode === 'yearly' && <div className="flex bg-white rounded-lg p-1 border shadow-sm"><button onClick={() => setYearlyViewType('money')} className={`px-3 py-1.5 text-xs font-bold rounded-md ${yearlyViewType === 'money' ? 'bg-emerald-500 text-white' : 'text-slate-500'}`}>수당</button><button onClick={() => setYearlyViewType('hours')} className={`px-3 py-1.5 text-xs font-bold rounded-md ${yearlyViewType === 'hours' ? 'bg-orange-500 text-white' : 'text-slate-500'}`}>인정시간</button></div>}
+                                        </div>
+                                        <button onClick={handleDownloadExcel} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700 transition flex items-center gap-1 shadow-sm"><Icons.FileExcel className="w-3 h-3"/>엑셀</button>
                                     </div>
                                 </div>
-                                <div className="flex-grow overflow-y-auto p-4 bg-slate-50 space-y-3">
-                                    {maintenanceLogs.length === 0 ? (
-                                        <div className="text-center py-10 text-slate-400 font-bold text-sm">기록된 정비 내역이 없습니다.</div>
-                                    ) : (
-                                        maintenanceLogs.map(log => {
-                                            const v = vehiclesList.find(vh => vh.id === log.vId) || { name: '삭제된 차량' };
-                                            return (
-                                                <div key={log.id} className="flex flex-col bg-white border border-slate-200 p-3 rounded-xl shadow-sm hover:shadow transition">
-                                                    <div className="flex justify-between items-start mb-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="bg-teal-100 text-teal-800 text-[10px] px-2 py-1 rounded font-black">{v.name}</span>
-                                                            <span className="text-xs font-bold text-slate-500">{log.date}</span>
-                                                        </div>
-                                                        <button onClick={() => deleteMaintLog(log.id)} className="text-rose-400 hover:text-rose-600 transition"><Icons.Trash2 className="w-4 h-4"/></button>
-                                                    </div>
-                                                    <div className="flex justify-between items-end">
-                                                        <p className="text-sm font-bold text-slate-800">{log.content}</p>
-                                                        <p className="text-sm font-black text-blue-600">{log.cost.toLocaleString()}원</p>
-                                                    </div>
-                                                </div>
-                                            )
-                                        })
-                                    )}
+                                <div className="flex-grow overflow-auto p-0 bg-white">
+                                    <table className="w-full text-left font-bold text-sm stats-table min-w-[900px]">
+                                        <thead className="bg-slate-50 border-b text-slate-500 text-xs uppercase">
+                                            <tr>{['이름','당일','1박','2박','공공','시티','나들이','성묘','기타','인정(h)','금월 수당'].map(h => <th key={h} className="text-center p-2">{h}</th>)}</tr>
+                                        </thead>
+                                        <tbody>
+                                            {(() => {
+                                                const stats = calculateStatsForRange(statsYear, statsMonth, statsYear, statsMonth, true);
+                                                return stats.map((s, i) => s.nm && !driverLeaveDates[i] ? (
+                                                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 text-center">
+                                                        <td className="p-2 font-extrabold">{getMaskedName(s.nm, getTodayStr(), false)}</td><td>{s.c1||'-'}</td><td>{s.c2||'-'}</td><td>{s.c3||'-'}</td>
+                                                        <td>{s.typeCounts['공공예약']||'-'}</td><td>{s.typeCounts['시티투어']||'-'}</td><td>{s.typeCounts['나들이']||'-'}</td><td>{s.typeCounts['성묘지원']||'-'}</td><td>{s.typeCounts['기타']||'-'}</td>
+                                                        <td className="text-blue-600 border-l">{s.tA.toFixed(3)}</td><td className="text-emerald-600">{s.tM.toLocaleString()}</td>
+                                                    </tr>
+                                                ) : null);
+                                            })()}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
@@ -1240,9 +1158,8 @@
                                 </div>
                                 <div className="p-4 overflow-y-auto flex-grow bg-slate-50 space-y-2">
                                     {driverNames.map((nm, i) => {
-                                        const isRetired = !!driverLeaveDates[i]; // 퇴사 여부 체크
-                                        if (isRetired || !nm) return null; // 퇴사자이거나 빈 칸은 인원 관리에서 안 보여줌!
-
+                                        const isRetired = !!driverLeaveDates[i];
+                                        if (isRetired || !nm) return null;
                                         return (
                                             <div key={i} className="flex justify-between items-center p-2.5 border rounded-lg bg-white shadow-sm">
                                                 <div className="text-xs text-slate-400 font-bold bg-slate-100 px-2 py-1 rounded w-8 text-center shrink-0">#{i}</div>
@@ -1266,13 +1183,9 @@
                                     {driverNames.map((nm, i) => {
                                         const isRetired = !!driverLeaveDates[i]; 
                                         if (!isRetired || !nm) return null; 
-
                                         return (
                                             <div key={i} className="flex justify-between items-center p-3 border rounded-lg bg-white opacity-80">
-                                                <div className="flex flex-col">
-                                                    <span className="font-extrabold text-slate-700 line-through decoration-rose-300">{nm}</span>
-                                                    <span className="text-[10px] text-rose-500 font-bold mt-0.5">제외일자: {driverLeaveDates[i]}</span>
-                                                </div>
+                                                <div className="flex flex-col"><span className="font-extrabold text-slate-700 line-through decoration-rose-300">{nm}</span><span className="text-[10px] text-rose-500 font-bold mt-0.5">제외일자: {driverLeaveDates[i]}</span></div>
                                                 <button onClick={() => restoreDriver(i)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg text-xs font-black shrink-0 transition-colors shadow-sm">원상 복구</button>
                                             </div>
                                         );
