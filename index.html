@@ -975,7 +975,7 @@
                                     <button onClick={() => triggerPasswordPrompt('drivers')} className="bg-white border border-orange-200 text-orange-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-orange-50 transition flex items-center justify-center gap-2"><Icons.Users className="w-4 h-4"/> 인원 관리</button>
                                     <button onClick={() => triggerPasswordPrompt('excludedDrivers')} className="bg-white border border-rose-200 text-rose-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-rose-50 transition flex items-center justify-center gap-2"><Icons.UserX className="w-4 h-4"/> 제외 운전자 게시판</button>
                                     <button onClick={() => setModal({ type: 'vehicles' })} className="bg-white border border-indigo-200 text-indigo-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-indigo-50 transition flex items-center justify-center gap-2"><Icons.Bus className="w-4 h-4"/> 차량 관리</button>
-                                    <button onClick={() => triggerPasswordPrompt('maintenance')} className="bg-white border border-amber-200 text-amber-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-amber-50 transition flex items-center justify-center gap-2"><Icons.Wrench className="w-4 h-4"/> 차량 정비 기록</button>
+                                    <button onClick={() => setModal({ type: 'maintenance' })} className="bg-white border border-amber-200 text-amber-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-amber-50 transition flex items-center justify-center gap-2"><Icons.Wrench className="w-4 h-4"/> 차량 정비 기록</button>
                                     <button onClick={() => setModal({ type: 'data' })} className="bg-white border border-slate-200 text-slate-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2"><Icons.Database className="w-4 h-4"/> 데이터 및 백업</button>
                                 </div>
                             )}
@@ -1173,7 +1173,7 @@
                                                 setAdminPassword(changePwdInput);
                                                 setChangePwdInput('');
                                                 setAlertMessage('관리자 비밀번호가 성공적으로 변경되었습니다!');
-                                            }} className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-sm transition-colors whitespace-nowrap">변경 적용</button>
+                                            }} className="bg-rose-5 hover:bg-rose-6 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-sm transition-colors whitespace-nowrap"></button>
                                         </div>
                                     </div>
                                 </div>
