@@ -236,7 +236,6 @@
             const [adminEmails, setAdminEmails] = useState([]);
             const [localIsAdmin, setLocalIsAdmin] = useState(localStorage.getItem('isAdmin') === 'true');
             const [adminPassword, setAdminPassword] = useState('0000'); 
-            const [autoLinked, setAutoLinked] = useState(false); 
             
             const isUserLoggedIn = user && !user.isAnonymous;
             
@@ -260,10 +259,8 @@
             const [password, setPassword] = useState('');
             const [authProcessing, setAuthProcessing] = useState(false);
             const [authError, setAuthError] = useState('');
-            const [newAdminEmail, setNewAdminEmail] = useState('');
             const [changePwdInput, setChangePwdInput] = useState('');
 
-            // 이중 보안 잠금 상태
             const [pwdPrompt, setPwdPrompt] = useState({ isOpen: false, target: null });
             const [isDispatchUnlocked, setIsDispatchUnlocked] = useState(false);
 
@@ -273,8 +270,8 @@
             const [modalDate, setModalDate] = useState(getTodayStr());
             
             const [driverNames, setDriverNames] = useState([]);
-            const [driverJoinDates, setDriverJoinDates] = useState([]); // 가입일
-            const [driverLeaveDates, setDriverLeaveDates] = useState([]); // 퇴사(삭제)일
+            const [driverJoinDates, setDriverJoinDates] = useState([]); 
+            const [driverLeaveDates, setDriverLeaveDates] = useState([]); 
 
             const [vehiclesList, setVehiclesList] = useState([]);
             const [paySettings, setPaySettings] = useState(DEFAULT_PAY_SETTINGS);
@@ -282,12 +279,10 @@
             const [maintenanceLogs, setMaintenanceLogs] = useState([]);
             const [maintSearch, setMaintSearch] = useState('');
             const [maintStartDate, setMaintStartDate] = useState('');
-            const [maintEndDate, setMaintEndDate] = useState('');
             const [maintSearchVehicle, setMaintSearchVehicle] = useState('');
             
             const [scheduleData, setScheduleData] = useState({});
             const [modal, setModal] = useState({ type: null, data: null });
-            const [isCalendarExpanded, setIsCalendarExpanded] = useState(false); 
             
             const [statsMode, setStatsMode] = useState('monthly');
             const [statsYear, setStatsYear] = useState(new Date().getFullYear());
@@ -724,6 +719,12 @@
                         n.reserved[vId] = { ...n.reserved[vId], duration: value, dailyTimes: newDailyTimes };
                     } else { 
                         n.reserved[vId] = { ...n.reserved[vId], [field]: value }; 
+                        // 메인 패널에서의 기본 시간 변경을 모달(업무일지)의 첫째 날 시간과 동기화
+                        if (field === 'startTime' || field === 'endTime') {
+                             let newDailyTimes = [...(n.reserved[vId].dailyTimes || [{startTime: '09:00', endTime: '18:00', isHolidayWork: false}])];
+                             newDailyTimes[0] = { ...newDailyTimes[0], [field]: value };
+                             n.reserved[vId].dailyTimes = newDailyTimes;
+                        }
                     }
                     handleSaveDay(n);
                 } 
@@ -737,7 +738,7 @@
                     const newDailyTimes = [...(info.dailyTimes || [{startTime: info.startTime || '09:00', endTime: info.endTime || '18:00', isHolidayWork: info.isHolidayWork || false}])];
                     newDailyTimes[dayIndex] = { ...newDailyTimes[dayIndex], [field]: value };
                     n.reserved[vId] = { ...info, dailyTimes: newDailyTimes };
-                    if (dayIndex === 0) n.reserved[vId][field] = value;
+                    if (dayIndex === 0) n.reserved[vId][field] = value; // 모달 첫째 날 시간 변경 시, 메인 화면 기본 시간도 동기화
                     handleSaveDay(n);
                 }
             };
@@ -870,8 +871,6 @@
 
             if (isLoading) return <div className="flex flex-col h-screen items-center justify-center bg-slate-100"><div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div><p className="mt-4 font-bold text-slate-500">배차 시스템 로드 중...</p></div>;
 
-            const currentOffDrivers = driverNames.filter((nm, i) => nm && isDriverActiveOnDate(i, selectedDateStr) && !currentDayData.driverStatus[i] && !currentDayData.tempOffStatus[i] && !currentDayData.cancelStatus[i]);
-            
             return (
                 <div className="font-sans text-slate-800 bg-slate-50 min-h-screen pb-10">
                     <header className="sticky top-0 bg-white/90 backdrop-blur border-b z-50 px-4 py-3 flex justify-between items-center shadow-sm">
@@ -896,6 +895,7 @@
                     </header>
 
                     <div className="p-4 md:p-6 flex flex-col lg:flex-row gap-6 relative">
+                        {/* 왼쪽 달력 및 일일 정보 패널 */}
                         <div className="flex-shrink-0 space-y-6" style={{ width: isEditAllowed && isDesktop ? leftPanelWidth : '100%', transition: 'width 0.3s ease' }}>
                             <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
                                 <div className="flex justify-between items-center mb-4 font-bold">
@@ -1008,17 +1008,40 @@
                                                                     <div><div className="text-sm font-black">{v.name}</div><div className="text-[10px] text-slate-400 font-mono">{v.plate}</div></div>
                                                                 </label>
                                                             </div>
+                                                            
+                                                            {/* 복구된 배차 예약 상세 옵션 폼 */}
                                                             {isReserved && (
                                                                 <div className="mt-3 pt-3 border-t border-blue-50 space-y-3">
-                                                                    <div className="grid grid-cols-2 gap-2">
-                                                                        <AutoSaveInput value={info.custName} onSave={(val) => updateVehicleInfo(v.id, 'custName', val)} placeholder="예약자명" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
-                                                                        <AutoSaveInput value={info.custPhone} onSave={(val) => updateVehicleInfo(v.id, 'custPhone', val)} placeholder="연락처" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
+                                                                    <div className="flex flex-wrap gap-4 mb-3 px-1">
+                                                                        <label className="flex items-center gap-1.5 text-xs font-black cursor-pointer text-slate-700 hover:opacity-80 transition-opacity">
+                                                                            <input type="checkbox" checked={info.isSingleDriver || false} onChange={() => updateVehicleInfo(v.id, 'isSingleDriver', !info.isSingleDriver)} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"/> 1인배정
+                                                                        </label>
+                                                                        <label className="flex items-center gap-1.5 text-xs font-black cursor-pointer text-orange-600 hover:opacity-80 transition-opacity">
+                                                                            <input type="checkbox" checked={info.isEmergency || false} onChange={() => updateVehicleInfo(v.id, 'isEmergency', !info.isEmergency)} className="w-4 h-4 rounded text-orange-500 focus:ring-orange-500"/> 긴급
+                                                                        </label>
+                                                                        <label className="flex items-center gap-1.5 text-xs font-black cursor-pointer text-rose-600 hover:opacity-80 transition-opacity">
+                                                                            <input type="checkbox" checked={info.isUnavailable || false} onChange={() => updateVehicleInfo(v.id, 'isUnavailable', !info.isUnavailable)} className="w-4 h-4 rounded text-rose-500 focus:ring-rose-500"/> 배차제외
+                                                                        </label>
+                                                                        <label className="flex items-center gap-1.5 text-xs font-black cursor-pointer text-gray-500 hover:opacity-80 transition-opacity">
+                                                                            <input type="checkbox" checked={info.isCancelled || false} onChange={() => updateVehicleInfo(v.id, 'isCancelled', !info.isCancelled)} className="w-4 h-4 rounded text-gray-500 focus:ring-gray-500"/> 취소
+                                                                        </label>
                                                                     </div>
-                                                                    <AutoSaveInput value={info.destination} onSave={(val) => updateVehicleInfo(v.id, 'destination', val)} placeholder="행선지" className="w-full text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
-                                                                    <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', (['seoul', 'etc', 'grave', 'picnic'].includes(e.target.value)) ? e.target.value : parseInt(e.target.value))} className="w-full text-center text-xs border rounded-lg p-2 bg-white font-bold mt-1">
+                                                                    
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <input type="time" value={info.startTime || '09:00'} onChange={(e) => updateVehicleInfo(v.id, 'startTime', e.target.value)} className="text-xs border border-slate-200 rounded-lg p-2 font-bold w-full outline-none focus:border-blue-400 bg-slate-50 focus:bg-white transition-colors shadow-sm"/>
+                                                                        <span className="text-slate-400 font-bold">~</span>
+                                                                        <input type="time" value={info.endTime || '18:00'} onChange={(e) => updateVehicleInfo(v.id, 'endTime', e.target.value)} className="text-xs border border-slate-200 rounded-lg p-2 font-bold w-full outline-none focus:border-blue-400 bg-slate-50 focus:bg-white transition-colors shadow-sm"/>
+                                                                    </div>
+
+                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                        <AutoSaveInput value={info.custName} onSave={(val) => updateVehicleInfo(v.id, 'custName', val)} placeholder="예약자명" className="text-xs border border-slate-200 rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold focus:border-blue-400 transition-colors"/>
+                                                                        <AutoSaveInput value={info.custPhone} onSave={(val) => updateVehicleInfo(v.id, 'custPhone', val)} placeholder="연락처" className="text-xs border border-slate-200 rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold focus:border-blue-400 transition-colors"/>
+                                                                    </div>
+                                                                    <AutoSaveInput value={info.destination} onSave={(val) => updateVehicleInfo(v.id, 'destination', val)} placeholder="행선지" className="w-full text-xs border border-slate-200 rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold focus:border-blue-400 transition-colors"/>
+                                                                    <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', (['seoul', 'etc', 'grave', 'picnic'].includes(e.target.value)) ? e.target.value : parseInt(e.target.value))} className="w-full text-center text-xs border border-slate-200 rounded-lg p-2 bg-white font-bold mt-1 shadow-sm outline-none focus:border-blue-400 transition-colors">
                                                                         <option value={1}>당일</option><option value={2}>1박</option><option value={3}>2박</option><option value="seoul">서울</option><option value="etc">기타</option>
                                                                     </select>
-                                                                    <AutoSaveInput value={info.memo} onSave={(val) => updateVehicleInfo(v.id, 'memo', val)} placeholder="메모" className="w-full text-xs border rounded-lg p-2 outline-none bg-slate-50 focus:bg-white mt-2"/>
+                                                                    <AutoSaveInput value={info.memo} onSave={(val) => updateVehicleInfo(v.id, 'memo', val)} placeholder="메모" className="w-full text-xs border border-slate-200 rounded-lg p-2 outline-none bg-slate-50 focus:bg-white mt-2 shadow-sm focus:border-blue-400 transition-colors"/>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1092,7 +1115,6 @@
                         </div>
                     )}
 
-                    {}
                     {modal.type === 'auth' && (
                         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
                             <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md">
@@ -1117,17 +1139,17 @@
                                     <button onClick={handleBackup} className="w-full py-3 bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm"><Icons.Download className="w-5 h-5"/> 백업 데이터 다운로드</button>
                                     
                                     <div className="mt-6 pt-6 border-t space-y-3">
-                                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"><Icons.Lock className="w-4 h-4 text-rose-500"/>탁과만남</h4>
+                                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2">변경</h4>
                                         <p className="text-[10px] text-slate-500 font-bold mb-2">.</p>
                                         <div className="flex gap-2">
-                                            <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder="." className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
+                                            <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder=".." className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
                                             <button onClick={async () => {
                                                 if (changePwdInput.trim().length < 4) return setAlertMessage("비밀번호는 최소 4자리 이상이어야 합니다.");
                                                 await db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ adminPassword: changePwdInput }, { merge: true });
                                                 setAdminPassword(changePwdInput);
                                                 setChangePwdInput('');
                                                 setAlertMessage('관리자 비밀번호가 성공적으로 변경되었습니다!');
-                                            }} className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-sm transition-colors whitespace-nowrap">용용</button>
+                                            }} className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-sm transition-colors whitespace-nowrap">변경 적용</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1135,6 +1157,7 @@
                         </div>
                     )}
 
+                    {}
                     {modal.type === 'vehicles' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
                             <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-w-md max-h-[80vh]">
@@ -1176,6 +1199,7 @@
                                     {driverNames.map((nm, i) => {
                                         const isRetired = !!driverLeaveDates[i]; 
                                         if (isRetired || !nm) return null; 
+
                                         return (
                                             <div key={i} className="flex justify-between items-center p-2.5 border rounded-lg bg-white shadow-sm">
                                                 <div className="text-xs text-slate-400 font-bold bg-slate-100 px-2 py-1 rounded w-8 text-center shrink-0">#{i}</div>
@@ -1184,6 +1208,7 @@
                                             </div>
                                         );
                                     })}
+                                    {driverNames.filter((nm, i) => nm && !driverLeaveDates[i]).length === 0 && <div className="text-center text-slate-400 text-xs py-10 font-bold">현재 활동 중인 운전자가 없습니다.</div>}
                                 </div>
                             </div>
                         </div>
@@ -1198,6 +1223,7 @@
                                     {driverNames.map((nm, i) => {
                                         const isRetired = !!driverLeaveDates[i]; 
                                         if (!isRetired || !nm) return null; 
+
                                         return (
                                             <div key={i} className="flex justify-between items-center p-3 border rounded-lg bg-white opacity-80">
                                                 <div className="flex flex-col">
@@ -1240,7 +1266,7 @@
                                         
                                         if(!d || !v || !c) return setAlertMessage("날짜, 차량, 정비 내역을 모두 입력해주세요.");
                                         
-                                        // 안전한 비용 숫자 변환 로직 적용! (하얀 화면 버그 해결)
+                                        // 안전한 비용 숫자 변환 로직 (하얀 화면 버그 완벽 방지)
                                         const safeCost = parseInt(costStr.replace(/[^0-9]/g, '')) || 0; 
 
                                         const newLogs = [{ id: Date.now().toString(), date: d, vehicle: v, content: c, cost: safeCost }, ...maintenanceLogs].sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -1267,7 +1293,7 @@
                                                 if (maintSearch && !log.content.includes(maintSearch)) return false;
                                                 return true;
                                             }).map(log => {
-                                                // 렌더링 시 안전한 문자열 포맷팅
+                                                // 렌더링 시 안전한 문자열 포맷팅 (데이터 손상 대비)
                                                 const costVal = log.cost !== undefined ? log.cost.toString() : '0';
                                                 const displayCost = parseInt(costVal.replace(/[^0-9]/g, '')) || 0;
                                                 
@@ -1370,6 +1396,7 @@
                         </div>
                     )}
 
+                    {}
                     {modal.type === 'stats' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
                             <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-w-6xl h-[90vh]">
