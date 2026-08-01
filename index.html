@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>배차관리</title>
     
-    <!-- Tailwind CSS, FontAwesome, NanumSquare Font CDN 로드 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/gh/moonspam/NanumSquare@2.0/nanumsquare.css">
@@ -21,12 +20,9 @@
         .cal-text-bold { font-weight: 800; }
     </style>
 
-    <!-- React 18 및 Babel CDN 로드 -->
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
-
-    <!-- Firebase SDK Compat v10 CDN 로드 -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -199,7 +195,7 @@
             return { work: parseFloat(totalWork.toFixed(1)), extra: parseFloat(totalExtra.toFixed(1)), adjusted: parseFloat(totalAdjusted.toFixed(3)), valid };
         };
 
-        // 초기 시작 시 기본 운전자 명단을 비워둡니다.
+        // 초기 시작 시 기본 운전자 명단을 비워둡니다 (좀비 데이터 방지)
         const DEFAULT_DRIVERS = [];
         const DEFAULT_VEHICLES = [
             { id: 'B1', name: '1호차', plate: '4921', type: 'BUS', capacity: 2 },
@@ -254,7 +250,6 @@
 
             const [confirmDialog, setConfirmDialog] = useState(null);
             const [alertMessage, setAlertMessage] = useState('');
-            const [isLoginMode, setIsLoginMode] = useState(true);
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [authProcessing, setAuthProcessing] = useState(false);
@@ -276,8 +271,6 @@
             const [paySettings, setPaySettings] = useState(DEFAULT_PAY_SETTINGS);
             
             const [maintenanceLogs, setMaintenanceLogs] = useState([]);
-            const [maintSearch, setMaintSearch] = useState('');
-            const [maintSearchVehicle, setMaintSearchVehicle] = useState('');
             
             const [scheduleData, setScheduleData] = useState({});
             const [modal, setModal] = useState({ type: null, data: null });
@@ -303,10 +296,8 @@
                 if (isAdmin) return name; 
                 if (!isDriver) return name; 
                 if (!targetDateStr) return name;
-                
                 const today = parseLocalDate(getTodayStr());
                 const targetDate = parseLocalDate(targetDateStr);
-                
                 const diffDays = Math.floor((targetDate.getTime() - today.getTime()) / 86400000);
                 if (diffDays > 9) return "(비공개)"; 
                 return name;
@@ -367,6 +358,7 @@
                 const unsubCalendar = db.collection("artifacts/" + APP_ID + "/public/data/calendar").onSnapshot((snapshot) => {
                     const newSchedule = {}; snapshot.forEach((doc) => { newSchedule[doc.id] = doc.data(); }); setScheduleData(newSchedule);
                 });
+
                 const unsubMaintenance = db.doc("artifacts/" + APP_ID + "/public/data/settings/maintenance").onSnapshot((docSnap) => {
                     if (docSnap.exists) setMaintenanceLogs(docSnap.data().logs || []); else setMaintenanceLogs([]);
                 });
@@ -551,16 +543,6 @@
                     }
                 }
 
-                const getPrevDate = (d, offset) => { const dateObj = new Date(d); dateObj.setDate(dateObj.getDate() - offset); return dateObj.toISOString().split('T')[0]; };
-                const d1 = getPrevDate(dateStr, 1); const d2 = getPrevDate(dateStr, 2);
-                const excludedIds = new Set();
-                if (allScheduleWithRanks[d1]) {
-                    allScheduleWithRanks[d1].dispatchResult.forEach(r => { if (r.info?.duration >= 2 && !r.info?.isCancelled) r.slots.forEach(s => s && !s.isExcluded && !s.isCancelledByRank && excludedIds.add(s.id)); });
-                }
-                if (allScheduleWithRanks[d2]) {
-                    allScheduleWithRanks[d2].dispatchResult.forEach(r => { if (r.info?.duration >= 3 && !r.info?.isCancelled) r.slots.forEach(s => s && !s.isExcluded && !s.isCancelledByRank && excludedIds.add(s.id)); });
-                }
-
                 const rawDayData = scheduleData[dateStr] || {};
                 return { 
                     reserved: rawDayData.reserved || {}, 
@@ -568,7 +550,7 @@
                     ondutyStatus: adaptStatus(rawDayData.ondutyStatus, false, n), 
                     tempOffStatus: adaptStatus(rawDayData.tempOffStatus, false, n),
                     cancelStatus: adaptStatus(rawDayData.cancelStatus, false, n),
-                    driverRanks: rawDayData.driverRanks || currentRanks, overrides: rawDayData.overrides || {}, isHoliday: isPublicHoliday(dateStr), dailyMemo: rawDayData.dailyMemo || "", workLogs: rawDayData.workLogs || {}, _excludedIds: excludedIds, dispatchResult: [] 
+                    driverRanks: rawDayData.driverRanks || currentRanks, overrides: rawDayData.overrides || {}, isHoliday: isPublicHoliday(dateStr), dailyMemo: rawDayData.dailyMemo || "", workLogs: rawDayData.workLogs || {}, dispatchResult: [] 
                 };
             };
 
@@ -607,7 +589,7 @@
 
             const handleSaveDay = async (newData) => { 
                 const { _isLinked, _excludedIds, excludedIds, dispatchResult, lastDriverId, ...dataToSave } = newData; 
-                await db.doc("artifacts/" + APP_ID + "/public/data/calendar/" + selectedDateStr).set(dataToSave); 
+                await db.doc("artifacts/" + APP_ID + "/public/data/calendar/" + selectedDateStr).set(dataToSave, { merge: true }); 
             };
             
             const handleSaveMaster = async (nD, nV, nJ, nL) => { 
@@ -726,22 +708,12 @@
                 const result = {};
                 driverNames.forEach((nm, idx) => {
                     if (!nm) return;
-                    result[idx] = { 
-                        name: nm, 
-                        dispatchCount: 0, 
-                        totalPay: 0, 
-                        dayCount: 0, 
-                        sleepCount: 0, 
-                        graveCount: 0, 
-                        picnicCount: 0, 
-                        customPayTotal: 0,
-                        workHours: 0,
-                        extraHours: 0,
-                        adjustedHours: 0
-                    };
+                    result[idx] = { name: nm, dispatchCount: 0, totalPay: 0, dayCount: 0, sleepCount: 0, graveCount: 0, picnicCount: 0, customPayTotal: 0, workHours: 0, extraHours: 0, adjustedHours: 0 };
                 });
 
+                const todayStr = getTodayStr();
                 const dates = Object.keys(allScheduleWithRanks).filter(d => {
+                    if (d > todayStr) return false; // 미래 일정은 정산에서 제외 (오늘 날짜까지만 환산)
                     const [y, m, day] = d.split('-');
                     if (statsMode === 'monthly') return parseInt(y) === statsYear && parseInt(m) === statsMonth + 1;
                     return parseInt(y) === statsYear;
@@ -753,23 +725,15 @@
                     
                     dayData.dispatchResult.forEach(item => {
                         if (item.info?.isCancelled) return;
-                        
                         item.slots.forEach(slot => {
                             if (slot && !slot.isExcluded && slot.nm && !slot.isCancelledByRank) {
                                 const dId = slot.id;
                                 if (!result[dId]) return;
-                                
                                 result[dId].dispatchCount++;
-                                
-                                const info = item.info;
-                                const duration = info.duration;
-                                const type = info.operationType;
-
+                                const info = item.info; const duration = info.duration; const type = info.operationType;
                                 let pay = 0;
-                                if (info.customPay) {
-                                    pay = parseInt(info.customPay);
-                                    result[dId].customPayTotal += pay;
-                                } else if (duration !== 'seoul' && duration !== 'etc') {
+                                if (info.customPay) { pay = parseInt(info.customPay); result[dId].customPayTotal += pay; } 
+                                else if (duration !== 'seoul' && duration !== 'etc') {
                                     if (type === '성묘지원') { pay = paySettings.grave || 0; result[dId].graveCount++; }
                                     else if (type === '나들이') { pay = paySettings.picnic || 0; result[dId].picnicCount++; }
                                     else if (type === '공공예약' || !type) {
@@ -779,18 +743,12 @@
                                     }
                                 }
                                 result[dId].totalPay += pay;
-
                                 const hours = calculateTotalWorkHours(info, date);
-                                if (hours.valid) {
-                                    result[dId].workHours += hours.work;
-                                    result[dId].extraHours += hours.extra;
-                                    result[dId].adjustedHours += hours.adjusted;
-                                }
+                                if (hours.valid) { result[dId].workHours += hours.work; result[dId].extraHours += hours.extra; result[dId].adjustedHours += hours.adjusted; }
                             }
                         });
                     });
                 });
-
                 return Object.values(result).filter(r => r.dispatchCount > 0 || !driverLeaveDates[driverNames.indexOf(r.name)]);
             };
 
@@ -887,10 +845,7 @@
                                                 </span>
                                             </div>
                                             
-                                            {dayData.dailyMemo && (
-                                                <div className="w-full mt-0.5 p-1 bg-rose-50 border border-rose-200 rounded text-rose-600 text-[10px] font-bold leading-tight shadow-sm break-keep whitespace-normal">🔔 {dayData.dailyMemo}</div>
-                                            )}
-
+                                            {dayData.dailyMemo && <div className="w-full mt-0.5 p-1 bg-rose-50 border border-rose-200 rounded text-rose-600 text-[10px] font-bold leading-tight shadow-sm break-keep whitespace-normal">🔔 {dayData.dailyMemo}</div>}
                                             <div className="w-full space-y-1 overflow-hidden mt-1">
                                                 {Object.values(vehicleGroups).map((group, gIdx) => (
                                                     <div key={gIdx} className={groupTextSize + " rounded truncate text-left whitespace-normal break-keep " + group.color + " shadow-sm"}>
@@ -921,15 +876,13 @@
                     <header className="sticky top-0 bg-white/90 backdrop-blur border-b z-50 px-4 py-3 flex justify-between items-center shadow-sm">
                         <div onClick={() => window.location.reload()} className="cursor-pointer hover:opacity-80 transition-opacity">
                             <h1 className="text-xl font-extrabold text-blue-600 flex items-center gap-2"><Icons.AccessibleBus className="w-6 h-6"/> 배차관리</h1>
-                            <div className="flex items-center gap-2 mt-1">
-                                <p className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> 실시간 접속중</p>
-                            </div>
+                            <div className="flex items-center gap-2 mt-1"><p className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> 실시간 접속중</p></div>
                         </div>
                         <div className="flex gap-2">
                             {isEditAllowed ? (
                                 <>
                                     <button onClick={() => setModalDate(selectedDateStr) || setModal({ type: 'workLog' })} className="bg-sky-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-sky-600 transition flex items-center gap-1"><Icons.ClipboardList className="w-3 h-3"/>업무</button>
-                                    <button onClick={() => { setStatsYear(viewDate.getFullYear()); setStatsMonth(viewDate.getMonth()); setModal({ type: 'stats' }); }} className="bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-emerald-600 transition flex items-center gap-1"><Icons.PieChart className="w-3 h-3"/>정산</button>
+                                    <button onClick={() => { const t = getTodayDate(); setStatsYear(t.getFullYear()); setStatsMonth(t.getMonth()); setModal({ type: 'stats' }); }} className="bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-emerald-600 transition flex items-center gap-1"><Icons.PieChart className="w-3 h-3"/>정산</button>
                                     <button disabled className="bg-slate-200 text-slate-400 px-3 py-1.5 rounded-xl text-xs font-bold shadow cursor-not-allowed transition flex items-center gap-1"><Icons.RotateCw className="w-3 h-3"/></button>
                                     <button onClick={handleLogoutAuth} className="bg-slate-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-slate-700 transition flex items-center gap-1 ml-2"><Icons.LogOut className="w-3 h-3"/> 로그아웃</button>
                                 </>
@@ -1090,6 +1043,7 @@
                         )}
                     </div>
                     
+                    {}
                     {pwdPrompt.isOpen && (
                         <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl animate-[fadeIn_0.2s_ease-out]">
@@ -1128,6 +1082,7 @@
                         </div>
                     )}
 
+                    {}
                     {confirmDialog && (
                         <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4">
                             <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm">
@@ -1149,6 +1104,7 @@
                         </div>
                     )}
 
+                    {}
                     {modal.type === 'auth' && (
                         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
                             <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md">
@@ -1173,10 +1129,10 @@
                                     <button onClick={handleBackup} className="w-full py-3 bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm"><Icons.Download className="w-5 h-5"/> 백업 데이터 다운로드</button>
                                     
                                     <div className="mt-6 pt-6 border-t space-y-3">
-                                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"> </h4>
+                                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"></h4>
                                         <p className="text-[10px] text-slate-500 font-bold mb-2"></p>
                                         <div className="flex gap-2">
-                                            <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder="" className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
+                                            <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder="새 비밀번호 입력" className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
                                             <button onClick={async () => {
                                                 if (changePwdInput.trim().length < 4) return setAlertMessage("비밀번호는 최소 4자리 이상이어야 합니다.");
                                                 await db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ adminPassword: changePwdInput }, { merge: true });
@@ -1230,6 +1186,7 @@
                         </div>
                     )}
 
+                    {}
                     {modal.type === 'excludedDrivers' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
                             <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-w-md max-h-[80vh]">
@@ -1286,7 +1243,7 @@
                                 <div className="overflow-y-auto flex-grow p-4 bg-slate-50 space-y-2">
                                     {maintenanceLogs.map(log => {
                                         const v = vehiclesList.find(x => x.id === log.vehicleId);
-                                        const safeCost = (parseInt(log.cost) || 0).toLocaleString(); // 안전한 숫자 포맷
+                                        const safeCost = (parseInt(log.cost) || 0).toLocaleString(); 
                                         return (
                                             <div key={log.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex justify-between items-center">
                                                 <div>
@@ -1310,6 +1267,7 @@
                         </div>
                     )}
 
+                    {}
                     {modal.type === 'vehicles' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
                             <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-w-md max-h-[80vh]">
@@ -1371,6 +1329,7 @@
                         </div>
                     )}
                     
+                    {}
                     {modal.type === 'stats' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-6xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
@@ -1399,6 +1358,7 @@
                                                 <button onClick={() => setStatsYear(y => y + 1)} className="hover:text-emerald-500"><Icons.ChevronRight className="w-4 h-4"/></button>
                                             </>
                                         )}
+                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full ml-1 truncate">오늘({getTodayStr()}) 기준</span>
                                     </div>
                                     <div className="flex items-center gap-2 text-xs font-bold bg-slate-50 p-2 rounded-lg border border-slate-200 shadow-sm">
                                         <span className="text-slate-500">당일단가:</span>
