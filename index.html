@@ -85,7 +85,7 @@
             Money: ({className}) => <i className={`fa-solid fa-won-sign ${className}`} />,
             Palette: ({className}) => <i className={`fa-solid fa-palette ${className}`} />,
             MessageCircle: ({className}) => <i className={`fa-regular fa-comment-dots ${className}`} />,
-            Bell: ({className}) => <i className={`fa-regular fa-bell ${className}`} />,
+            Bell: ({className}) => <i className={`fa-solid fa-bell ${className}`} />,
             ClipboardList: ({className}) => <i className={`fa-solid fa-clipboard-list ${className}`} />,
             Wrench: ({className}) => <i className={`fa-solid fa-wrench ${className}`} />,
             LogOut: ({className}) => <i className={`fa-solid fa-arrow-right-from-bracket ${className}`} />,
@@ -342,7 +342,6 @@
                         const data = docSnap.data(); 
                         const names = data.driverNames || [];
                         setDriverNames(names); 
-                        // 길이가 맞지 않아 버그가 생기는 현상을 방지하기 위해 배열 길이를 동기화
                         setDriverJoinDates(names.map((_, i) => (data.driverJoinDates && data.driverJoinDates[i]) ? data.driverJoinDates[i] : ''));
                         setDriverLeaveDates(names.map((_, i) => (data.driverLeaveDates && data.driverLeaveDates[i]) ? data.driverLeaveDates[i] : ''));
                         
@@ -405,7 +404,7 @@
 
                 const result = [];
                 const manualAssignments = {}; 
-                // [버그수정] 수동(고정) 배정된 운전자가 이미 제외(퇴사)된 인원일 경우 해당 명령을 무시하고 자동배정 풀로 넘김
+                // 수동 배정된 운전자가 제외된 경우 무시
                 Object.entries(dayData.overrides || {}).forEach(([key, dId]) => { 
                     if (isDriverActiveOnDate(dId, dateStr)) {
                         manualAssignments[key] = dId; 
@@ -456,7 +455,7 @@
                         currentRanks = [...rawDayData.driverRanks];
                     } else {
                         const validDriverIds = driverNames.map((_, i) => i).filter(i => isDriverActiveOnDate(i, date));
-                        if (lastDriverId !== -1) {
+                        if (lastDriverId !== -1 && validDriverIds.length > 0) {
                             const newRanks = Array(n).fill(0);
                             let startValidIdx = validDriverIds.indexOf(lastDriverId);
                             if (startValidIdx === -1) {
@@ -734,7 +733,7 @@
 
                 const todayStr = getTodayStr();
                 const dates = Object.keys(allScheduleWithRanks).filter(d => {
-                    if (d > todayStr) return false; // 미래 일정은 정산에서 제외 (오늘 날짜까지만 환산)
+                    if (d > todayStr) return false; 
                     const [y, m, day] = d.split('-');
                     if (statsMode === 'monthly') return parseInt(y) === statsYear && parseInt(m) === statsMonth + 1;
                     return parseInt(y) === statsYear;
@@ -902,7 +901,7 @@
                         <div className="flex gap-2">
                             {isEditAllowed ? (
                                 <>
-                                    <button onClick={() => setModalDate(selectedDateStr) || setModal({ type: 'workLog' })} className="bg-sky-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-sky-600 transition flex items-center gap-1"><Icons.ClipboardList className="w-3 h-3"/>업무</button>
+                                    <button onClick={() => setModalDate(selectedDateStr) || setModal({ type: 'notice' })} className="bg-rose-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-rose-600 transition flex items-center gap-1"><Icons.Bell className="w-3 h-3"/>공지</button>
                                     <button onClick={() => { const t = getTodayDate(); setStatsYear(t.getFullYear()); setStatsMonth(t.getMonth()); setModal({ type: 'stats' }); }} className="bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-emerald-600 transition flex items-center gap-1"><Icons.PieChart className="w-3 h-3"/>정산</button>
                                     <button disabled className="bg-slate-200 text-slate-400 px-3 py-1.5 rounded-xl text-xs font-bold shadow cursor-not-allowed transition flex items-center gap-1"><Icons.RotateCw className="w-3 h-3"/></button>
                                     <button onClick={handleLogoutAuth} className="bg-slate-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow hover:bg-slate-700 transition flex items-center gap-1 ml-2"><Icons.LogOut className="w-3 h-3"/> 로그아웃</button>
@@ -1176,8 +1175,7 @@
                                     <button onClick={handleBackup} className="w-full py-3 bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm"><Icons.Download className="w-5 h-5"/> 백업 데이터 다운로드</button>
                                     
                                     <div className="mt-6 pt-6 border-t space-y-3">
-                                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"></h4>
-                                        <p className="text-[10px] text-slate-500 font-bold mb-2"></p>
+                                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"> </h4>
                                         <div className="flex gap-2">
                                             <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder="" className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
                                             <button onClick={async () => {
@@ -1336,39 +1334,29 @@
                         </div>
                     )}
 
-                    {modal.type === 'workLog' && (
+                    {modal.type === 'notice' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-4xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-                                <div className="p-4 border-b font-bold flex justify-between items-center bg-sky-50 text-sky-800 shrink-0">
+                            <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+                                <div className="p-4 border-b font-bold flex justify-between items-center bg-rose-50 text-rose-800 shrink-0">
                                     <div className="flex items-center gap-3">
-                                        <h3 className="flex items-center gap-2"><Icons.ClipboardList className="w-5 h-5"/> 업무 일지</h3>
-                                        <input type="date" value={modalDate} onChange={(e) => setModalDate(e.target.value)} className="border-none bg-white p-1 rounded font-black text-sm outline-none shadow-sm"/>
+                                        <h3 className="flex items-center gap-2"><Icons.Bell className="w-5 h-5"/> 달력 공지사항 등록</h3>
+                                        <input type="date" value={modalDate} onChange={(e) => setModalDate(e.target.value)} className="border-none bg-white p-1 rounded font-black text-sm outline-none shadow-sm text-rose-700"/>
                                     </div>
-                                    <button onClick={() => setModal({ type: null })} className="hover:text-sky-900"><Icons.X className="w-5 h-5"/></button>
+                                    <button onClick={() => setModal({ type: null })} className="hover:text-rose-900"><Icons.X className="w-5 h-5"/></button>
                                 </div>
-                                <div className="overflow-y-auto flex-grow p-4 bg-slate-50 space-y-4">
-                                    {getCalculatedDayData(modalDate).dispatchResult.map((item, idx) => {
-                                        if (!item || !item.vehicle) return null;
-                                        const wL = getCalculatedDayData(modalDate).workLogs || {};
-                                        const logData = wL[item.vehicle.id] || { content: '' };
-                                        
-                                        return (
-                                            <div key={idx} className="bg-white border rounded-xl p-4 shadow-sm">
-                                                <div className="flex justify-between items-center mb-3 border-b pb-2">
-                                                    <div className="font-black text-slate-800 flex items-center gap-2">
-                                                        <Icons.Bus className="w-4 h-4 text-sky-500"/>{item.vehicle.name} <span className="text-xs text-slate-400">({item.info.destination})</span>
-                                                    </div>
-                                                </div>
-                                                <div className="grid grid-cols-1 gap-2">
-                                                    <AutoSaveInput value={logData.content} onSave={(val) => {
-                                                        const n = { ...currentDayData, workLogs: { ...wL, [item.vehicle.id]: { ...logData, content: val } } };
-                                                        db.doc("artifacts/" + APP_ID + "/public/data/calendar/" + modalDate).set(n, { merge: true });
-                                                    }} placeholder="운행 특이사항, 경유지, 특기사항 등 입력" className="w-full border rounded p-2 text-xs bg-slate-50 font-bold" />
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                    {getCalculatedDayData(modalDate).dispatchResult.length === 0 && <div className="text-center py-10 text-slate-400 font-bold text-sm">해당 날짜에 배차 내역이 없습니다.</div>}
+                                <div className="p-6 bg-slate-50 flex-grow flex flex-col gap-4">
+                                    <div className="font-black text-slate-700 text-sm flex items-center gap-2">
+                                        <Icons.MessageCircle className="w-4 h-4 text-rose-500" /> 선택한 날짜({modalDate})에 표시될 내용
+                                    </div>
+                                    <AutoSaveInput 
+                                        value={getCalculatedDayData(modalDate).dailyMemo || ''} 
+                                        onSave={(val) => {
+                                            db.doc("artifacts/" + APP_ID + "/public/data/calendar/" + modalDate).set({ dailyMemo: val }, { merge: true });
+                                        }} 
+                                        placeholder="달력 해당 일자 칸에 표시될 공지 내용을 입력하세요." 
+                                        className="w-full border-2 border-rose-100 rounded-xl p-4 text-sm bg-white font-bold outline-none focus:border-rose-400 shadow-sm min-h-[100px]" 
+                                    />
+                                    <p className="text-[10px] text-slate-400 font-bold text-center">입력칸 바깥을 클릭하거나 Enter를 누르면 달력에 즉시 저장됩니다.</p>
                                 </div>
                             </div>
                         </div>
