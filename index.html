@@ -340,9 +340,12 @@
                 const unsubMaster = db.doc("artifacts/" + APP_ID + "/public/data/settings/master").onSnapshot((docSnap) => {
                     if (docSnap.exists) { 
                         const data = docSnap.data(); 
-                        setDriverNames(data.driverNames || []); 
-                        setDriverJoinDates(data.driverJoinDates || new Array((data.driverNames || []).length).fill(''));
-                        setDriverLeaveDates(data.driverLeaveDates || new Array((data.driverNames || []).length).fill(''));
+                        const names = data.driverNames || [];
+                        setDriverNames(names); 
+                        // 길이가 맞지 않아 버그가 생기는 현상을 방지하기 위해 배열 길이를 동기화
+                        setDriverJoinDates(names.map((_, i) => (data.driverJoinDates && data.driverJoinDates[i]) ? data.driverJoinDates[i] : ''));
+                        setDriverLeaveDates(names.map((_, i) => (data.driverLeaveDates && data.driverLeaveDates[i]) ? data.driverLeaveDates[i] : ''));
+                        
                         setVehiclesList(data.vehiclesList || []); 
                         setPaySettings({ ...DEFAULT_PAY_SETTINGS, ...(data.paySettings || {}) });
                         setAdminPassword(data.adminPassword || '0000');
@@ -402,7 +405,13 @@
 
                 const result = [];
                 const manualAssignments = {}; 
-                Object.entries(dayData.overrides || {}).forEach(([key, dId]) => { manualAssignments[key] = dId; pool = pool.filter(p => p.id !== dId); });
+                // [버그수정] 수동(고정) 배정된 운전자가 이미 제외(퇴사)된 인원일 경우 해당 명령을 무시하고 자동배정 풀로 넘김
+                Object.entries(dayData.overrides || {}).forEach(([key, dId]) => { 
+                    if (isDriverActiveOnDate(dId, dateStr)) {
+                        manualAssignments[key] = dId; 
+                        pool = pool.filter(p => p.id !== dId); 
+                    }
+                });
 
                 sortedV.forEach(v => {
                     const info = dayData.reserved[v.id] || {};
@@ -704,6 +713,18 @@
                 }
             };
 
+            const updateOverride = (vId, slotIdx, driverIdStr) => {
+                if(!isEditAllowed) return;
+                const n = { ...currentDayData, overrides: { ...currentDayData.overrides } };
+                const key = `${vId}_${slotIdx}`;
+                if (driverIdStr === '') {
+                    delete n.overrides[key];
+                } else {
+                    n.overrides[key] = parseInt(driverIdStr);
+                }
+                handleSaveDay(n);
+            };
+
             const getStatsData = () => {
                 const result = {};
                 driverNames.forEach((nm, idx) => {
@@ -967,6 +988,7 @@
                             )}
                         </div>
 
+                        {}
                         {isEditAllowed && (
                             <>
                                 <div className="hidden lg:block w-2 bg-slate-200 hover:bg-blue-400 cursor-col-resize rounded-full transition-colors self-stretch flex-shrink-0 z-10" onMouseDown={handleMouseDown}></div>
@@ -1011,14 +1033,41 @@
                                                                         <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer text-slate-600 hover:text-slate-900"><input type="checkbox" checked={info.isUnavailable} onChange={e => updateVehicleInfo(v.id, 'isUnavailable', e.target.checked)} className="rounded text-slate-500 w-3.5 h-3.5"/> 배차제외</label>
                                                                         <label className="flex items-center gap-1.5 text-xs font-black cursor-pointer text-red-500 hover:text-red-600"><input type="checkbox" checked={info.isCancelled} onChange={e => updateVehicleInfo(v.id, 'isCancelled', e.target.checked)} className="rounded text-red-500 w-3.5 h-3.5"/> 취소</label>
                                                                     </div>
+                                                                    <div className="bg-blue-50/50 p-2 rounded-lg border border-blue-100 mb-2">
+                                                                        <div className="text-xs font-black text-blue-800 mb-1.5 flex items-center gap-1"><Icons.UserCheck className="w-3 h-3"/> 수동 운전자 배정 (선택 시 자동배정 무시)</div>
+                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                            {Array.from({length: info.isSingleDriver ? 1 : v.capacity}).map((_, sIdx) => {
+                                                                                const key = `${v.id}_${sIdx}`;
+                                                                                const selectedDriverId = (currentDayData.overrides && currentDayData.overrides[key] !== undefined) ? currentDayData.overrides[key] : '';
+                                                                                return (
+                                                                                    <select key={sIdx} value={selectedDriverId} onChange={e => updateOverride(v.id, sIdx, e.target.value)} className="w-full text-xs border rounded p-1.5 font-bold outline-none bg-white text-slate-700 shadow-sm">
+                                                                                        <option value="">자동 배정 (기본)</option>
+                                                                                        {driverNames.map((dName, dIdx) => {
+                                                                                            if (!dName || !isDriverActiveOnDate(dIdx, selectedDateStr)) return null;
+                                                                                            return <option key={dIdx} value={dIdx}>{dName} ({currentDayData.driverRanks[dIdx]}순위)</option>
+                                                                                        })}
+                                                                                    </select>
+                                                                                )
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
                                                                     <div className="grid grid-cols-2 gap-2">
                                                                         <AutoSaveInput value={info.custName} onSave={(val) => updateVehicleInfo(v.id, 'custName', val)} placeholder="예약자명" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
                                                                         <AutoSaveInput value={info.custPhone} onSave={(val) => updateVehicleInfo(v.id, 'custPhone', val)} placeholder="연락처" className="text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
                                                                     </div>
                                                                     <AutoSaveInput value={info.destination} onSave={(val) => updateVehicleInfo(v.id, 'destination', val)} placeholder="행선지" className="w-full text-xs border rounded-lg p-2 outline-none bg-white font-extrabold shadow-sm font-bold"/>
-                                                                    <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', (['seoul', 'etc', 'grave', 'picnic'].includes(e.target.value)) ? e.target.value : parseInt(e.target.value))} className="w-full text-center text-xs border rounded-lg p-2 bg-white font-bold mt-1">
-                                                                        <option value={1}>당일</option><option value={2}>1박</option><option value={3}>2박</option><option value="seoul">서울</option><option value="etc">기타</option>
-                                                                    </select>
+                                                                    <div className="grid grid-cols-2 gap-2 mt-1">
+                                                                        <select value={info.operationType || '공공예약'} onChange={e => updateVehicleInfo(v.id, 'operationType', e.target.value)} className="w-full text-xs border rounded-lg p-2 bg-white font-bold outline-none shadow-sm">
+                                                                            <option value="공공예약">공공예약</option>
+                                                                            <option value="성묘지원">성묘지원</option>
+                                                                            <option value="나들이">나들이</option>
+                                                                            <option value="시티투어">시티투어</option>
+                                                                            <option value="기타">기타</option>
+                                                                        </select>
+                                                                        <select value={info.duration} onChange={(e) => updateVehicleInfo(v.id, 'duration', (['seoul', 'etc', 'grave', 'picnic'].includes(e.target.value)) ? e.target.value : parseInt(e.target.value))} className="w-full text-center text-xs border rounded-lg p-2 bg-white font-bold">
+                                                                            <option value={1}>당일</option><option value={2}>1박</option><option value={3}>2박</option><option value="seoul">서울</option><option value="etc">기타</option>
+                                                                        </select>
+                                                                    </div>
                                                                     <div className="space-y-1.5">
                                                                         {Array.from({length: info.duration === 'seoul' || info.duration === 'etc' || info.duration === 'grave' || info.duration === 'picnic' ? 1 : parseInt(info.duration) || 1}).map((_, dayIdx) => (
                                                                             <div key={dayIdx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-100">
@@ -1082,7 +1131,6 @@
                         </div>
                     )}
 
-                    {}
                     {confirmDialog && (
                         <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4">
                             <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm">
@@ -1104,7 +1152,6 @@
                         </div>
                     )}
 
-                    {}
                     {modal.type === 'auth' && (
                         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
                             <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md">
@@ -1132,7 +1179,7 @@
                                         <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"></h4>
                                         <p className="text-[10px] text-slate-500 font-bold mb-2"></p>
                                         <div className="flex gap-2">
-                                            <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder="새 비밀번호 입력" className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
+                                            <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder="" className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
                                             <button onClick={async () => {
                                                 if (changePwdInput.trim().length < 4) return setAlertMessage("비밀번호는 최소 4자리 이상이어야 합니다.");
                                                 await db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ adminPassword: changePwdInput }, { merge: true });
@@ -1186,7 +1233,6 @@
                         </div>
                     )}
 
-                    {}
                     {modal.type === 'excludedDrivers' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
                             <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-w-md max-h-[80vh]">
@@ -1267,7 +1313,6 @@
                         </div>
                     )}
 
-                    {}
                     {modal.type === 'vehicles' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
                             <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-w-md max-h-[80vh]">
@@ -1329,7 +1374,6 @@
                         </div>
                     )}
                     
-                    {}
                     {modal.type === 'stats' && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-6xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
