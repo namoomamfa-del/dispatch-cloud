@@ -195,8 +195,8 @@
             return { work: parseFloat(totalWork.toFixed(1)), extra: parseFloat(totalExtra.toFixed(1)), adjusted: parseFloat(totalAdjusted.toFixed(3)), valid };
         };
 
-        // 초기 시작 시 기본 운전자 명단을 비워둡니다 (좀비 데이터 방지)
-        const DEFAULT_DRIVERS = [];
+        // 원래 9명의 명단을 기본값으로 복구하여, DB가 비워져도 다시 살아나도록 설정합니다.
+        const DEFAULT_DRIVERS = ["박기준", "변석현", "이명순", "김탁", "한상훈", "문인식", "황덕일", "강철규", "이상헌"];
         const DEFAULT_VEHICLES = [
             { id: 'B1', name: '1호차', plate: '4921', type: 'BUS', capacity: 2 },
             { id: 'B2', name: '2호차', plate: '4922', type: 'BUS', capacity: 2 },
@@ -340,10 +340,25 @@
                 const unsubMaster = db.doc("artifacts/" + APP_ID + "/public/data/settings/master").onSnapshot((docSnap) => {
                     if (docSnap.exists) { 
                         const data = docSnap.data(); 
-                        const names = data.driverNames || [];
+                        let names = data.driverNames || [];
+                        let jDates = data.driverJoinDates || [];
+                        let lDates = data.driverLeaveDates || [];
+
+                        // 🚨 [운전자 자동 복구 안전장치] 만약 서버 데이터가 텅 비었다면 즉시 디폴트 명단으로 자동 복구
+                        if (names.length === 0) {
+                            names = DEFAULT_DRIVERS;
+                            jDates = new Array(DEFAULT_DRIVERS.length).fill('');
+                            lDates = new Array(DEFAULT_DRIVERS.length).fill('');
+                            db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ 
+                                driverNames: names, 
+                                driverJoinDates: jDates, 
+                                driverLeaveDates: lDates 
+                            }, { merge: true });
+                        }
+
                         setDriverNames(names); 
-                        setDriverJoinDates(names.map((_, i) => (data.driverJoinDates && data.driverJoinDates[i]) ? data.driverJoinDates[i] : ''));
-                        setDriverLeaveDates(names.map((_, i) => (data.driverLeaveDates && data.driverLeaveDates[i]) ? data.driverLeaveDates[i] : ''));
+                        setDriverJoinDates(names.map((_, i) => jDates[i] ? jDates[i] : ''));
+                        setDriverLeaveDates(names.map((_, i) => lDates[i] ? lDates[i] : ''));
                         
                         setVehiclesList(data.vehiclesList || []); 
                         setPaySettings({ ...DEFAULT_PAY_SETTINGS, ...(data.paySettings || {}) });
@@ -404,7 +419,7 @@
 
                 const result = [];
                 const manualAssignments = {}; 
-                // 수동 배정된 운전자가 제외된 경우 무시
+                // 수동 배정된 운전자가 제외된 경우 무시하여 좀비 부활 방지
                 Object.entries(dayData.overrides || {}).forEach(([key, dId]) => { 
                     if (isDriverActiveOnDate(dId, dateStr)) {
                         manualAssignments[key] = dId; 
@@ -733,7 +748,7 @@
 
                 const todayStr = getTodayStr();
                 const dates = Object.keys(allScheduleWithRanks).filter(d => {
-                    if (d > todayStr) return false; 
+                    if (d > todayStr) return false; // 미래 정산 제외 (오늘 날짜까지만)
                     const [y, m, day] = d.split('-');
                     if (statsMode === 'monthly') return parseInt(y) === statsYear && parseInt(m) === statsMonth + 1;
                     return parseInt(y) === statsYear;
@@ -1175,16 +1190,16 @@
                                     <button onClick={handleBackup} className="w-full py-3 bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm"><Icons.Download className="w-5 h-5"/> 백업 데이터 다운로드</button>
                                     
                                     <div className="mt-6 pt-6 border-t space-y-3">
-                                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"> </h4>
+                                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"><Icons.Lock className="w-4 h-4 text-rose-500"/> 관리자 비밀번호 변경</h4>
                                         <div className="flex gap-2">
-                                            <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder="" className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
+                                            <input type="password" value={changePwdInput} onChange={(e) => setChangePwdInput(e.target.value)} placeholder="새 비밀번호 입력" className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-rose-500"/>
                                             <button onClick={async () => {
                                                 if (changePwdInput.trim().length < 4) return setAlertMessage("비밀번호는 최소 4자리 이상이어야 합니다.");
                                                 await db.doc("artifacts/" + APP_ID + "/public/data/settings/master").set({ adminPassword: changePwdInput }, { merge: true });
                                                 setAdminPassword(changePwdInput);
                                                 setChangePwdInput('');
                                                 setAlertMessage('관리자 비밀번호가 성공적으로 변경되었습니다!');
-                                            }} className="bg-rose-5 hover:bg-rose-6 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-sm transition-colors whitespace-nowrap"></button>
+                                            }} className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-sm transition-colors whitespace-nowrap">변경 적용</button>
                                         </div>
                                     </div>
                                 </div>
