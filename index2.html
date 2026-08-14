@@ -794,6 +794,7 @@
 
                 if (currentlyExcluded) {
                     // 현재 선택된 날짜에 제외된 상태이면, 다시 제외를 해제 (복구)
+                    while (nL.length <= idx) nL.push(null);
                     nL[idx] = null;
                     handleSaveMaster(null, null, undefined, nL);
                 } else {
@@ -801,9 +802,15 @@
                     setConfirmDialog({
                         message: `[${driverNames[idx]}] 인원을 ${selectedDateStr} 부터 배차 명단에서 영구 제외하시겠습니까?\n(과거 기록은 모두 보존됩니다.)`,
                         onConfirm: async () => {
-                            nL[idx] = selectedDateStr;
-                            await handleSaveMaster(null, null, undefined, nL);
-                            setConfirmDialog(null);
+                            setConfirmDialog(null); // 즉각 닫기
+                            try {
+                                while (nL.length <= idx) nL.push(null);
+                                nL[idx] = selectedDateStr;
+                                await handleSaveMaster(null, null, undefined, nL);
+                            } catch(e) {
+                                console.error(e);
+                                setAlertMessage("저장 중 오류 발생: " + e.message);
+                            }
                         }
                     });
                 }
@@ -1342,8 +1349,8 @@
                             <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm animate-[fadeIn_0.2s_ease-out]">
                                 <h3 className="text-lg font-black text-slate-800 mb-3 whitespace-pre-wrap">{confirmDialog.message}</h3>
                                 <div className="flex gap-2 justify-end mt-6">
-                                    <button onClick={() => setConfirmDialog(null)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200">취소</button>
-                                    <button onClick={confirmDialog.onConfirm} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md">확인</button>
+                                    <button type="button" onClick={() => setConfirmDialog(null)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200">취소</button>
+                                    <button type="button" onClick={() => confirmDialog.onConfirm()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md">확인</button>
                                 </div>
                             </div>
                         </div>
@@ -1352,7 +1359,7 @@
                         <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4">
                             <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm animate-[fadeIn_0.2s_ease-out]">
                                 <h3 className="text-base font-bold text-slate-800 mb-4 whitespace-pre-wrap">{alertMessage}</h3>
-                                <button onClick={() => setAlertMessage('')} className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md">확인</button>
+                                <button type="button" onClick={() => setAlertMessage('')} className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md">확인</button>
                             </div>
                         </div>
                     )}
@@ -1475,7 +1482,7 @@
                                                         const btnClass = "flex-grow py-2.5 rounded-xl text-xs font-bold border flex items-center justify-center gap-1 transition-all " + (!isEditAllowed ? 'opacity-90 cursor-default' : 'shadow-sm cursor-pointer') + " " + (isAssigned ? ((d.type==='manual' || d.type==='emergency') ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:text-blue-600') : 'bg-red-50 border-red-100 text-red-500 animate-pulse hover:bg-red-100');
                                                         
                                                         return (
-                                                            <button key={sIdx} disabled={!isEditAllowed} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className={btnClass}>
+                                                            <button key={sIdx} type="button" disabled={!isEditAllowed} onClick={() => setModal({ type: 'replace', data: { vId: item.vehicle.id, sIdx } })} className={btnClass}>
                                                                 {isAssigned ? (
                                                                     <>{getMaskedName(d.nm, selectedDateStr, true)} <span className="text-[10px] opacity-60 ml-1 font-normal">({d.rank}순위)</span> {(d.type==='manual' || d.type==='emergency') && <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}</>
                                                                 ) : (!isEditAllowed ? '공석' : '공석 배정하기')}
@@ -1551,18 +1558,18 @@
                                         return (
                                             <div key={i} className={"flex items-center justify-between p-2.5 rounded-lg border text-sm font-bold transition " + (isExcludedToday ? 'bg-red-50 border-red-200 opacity-80' : currentDayData.driverStatus[i] ? 'bg-white border-blue-100' : 'bg-slate-50 border-slate-200')}>
                                                 <div className="flex items-center gap-2 flex-grow">
-                                                    <button disabled={isLocked || isExcludedToday} onClick={() => toggleDriverStatus(i)} className={"px-3 py-1 rounded-md text-[10px] flex-shrink-0 transition-colors " + (currentDayData.driverStatus[i] ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-500') + " " + ((isLocked || isExcludedToday) ? 'opacity-50 cursor-not-allowed' : (currentDayData.driverStatus[i] ? 'hover:bg-blue-600' : 'hover:bg-slate-300'))}>
+                                                    <button type="button" disabled={isLocked || isExcludedToday} onClick={() => toggleDriverStatus(i)} className={"px-3 py-1 rounded-md text-[10px] flex-shrink-0 transition-colors " + (currentDayData.driverStatus[i] ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-500') + " " + ((isLocked || isExcludedToday) ? 'opacity-50 cursor-not-allowed' : (currentDayData.driverStatus[i] ? 'hover:bg-blue-600' : 'hover:bg-slate-300'))}>
                                                         {currentDayData.driverStatus[i] ? '출근' : '휴무'}
                                                     </button>
                                                     {isEditAllowed && (
-                                                        <button disabled={isExcludedToday} onClick={() => toggleCancelStatus(i)} className={"px-3 py-1 rounded-md text-[10px] flex-shrink-0 transition-colors " + (currentDayData.cancelStatus[i] ? 'bg-purple-500 text-white hover:bg-purple-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300') + " " + (isExcludedToday ? 'opacity-50 cursor-not-allowed' : '')}>
+                                                        <button type="button" disabled={isExcludedToday} onClick={() => toggleCancelStatus(i)} className={"px-3 py-1 rounded-md text-[10px] flex-shrink-0 transition-colors " + (currentDayData.cancelStatus[i] ? 'bg-purple-500 text-white hover:bg-purple-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300') + " " + (isExcludedToday ? 'opacity-50 cursor-not-allowed' : '')}>
                                                             {currentDayData.cancelStatus[i] ? '순위소모됨' : '순위소모'}
                                                         </button>
                                                     )}
-                                                    <button disabled={isLocked || isExcludedToday} onClick={() => toggleOndutyStatus(i)} className={"px-3 py-1 rounded-md text-[10px] flex-shrink-0 transition-colors " + (currentDayData.ondutyStatus?.[i] ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-500') + " " + ((isLocked || isExcludedToday) ? 'opacity-50 cursor-not-allowed' : (currentDayData.ondutyStatus?.[i] ? 'hover:bg-orange-600' : 'hover:bg-slate-300'))}>
+                                                    <button type="button" disabled={isLocked || isExcludedToday} onClick={() => toggleOndutyStatus(i)} className={"px-3 py-1 rounded-md text-[10px] flex-shrink-0 transition-colors " + (currentDayData.ondutyStatus?.[i] ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-500') + " " + ((isLocked || isExcludedToday) ? 'opacity-50 cursor-not-allowed' : (currentDayData.ondutyStatus?.[i] ? 'hover:bg-orange-600' : 'hover:bg-slate-300'))}>
                                                         당직
                                                     </button>
-                                                    <button disabled={isLocked || isExcludedToday} onClick={() => toggleTempOffStatus(i)} className={`px-3 py-1 rounded-md text-[10px] flex-shrink-0 transition-colors ${currentDayData.tempOffStatus[i] ? 'bg-teal-500 text-white hover:bg-teal-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'} ${(isLocked || isExcludedToday) ? 'opacity-50 cursor-not-allowed' : (currentDayData.tempOffStatus[i] ? 'hover:bg-teal-600' : 'hover:bg-slate-300')}`}>
+                                                    <button type="button" disabled={isLocked || isExcludedToday} onClick={() => toggleTempOffStatus(i)} className={`px-3 py-1 rounded-md text-[10px] flex-shrink-0 transition-colors ${currentDayData.tempOffStatus[i] ? 'bg-teal-500 text-white hover:bg-teal-600' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'} ${(isLocked || isExcludedToday) ? 'opacity-50 cursor-not-allowed' : (currentDayData.tempOffStatus[i] ? 'hover:bg-teal-600' : 'hover:bg-slate-300')}`}>
                                                         {currentDayData.tempOffStatus[i] ? '임휴중' : '휴'}
                                                     </button>
                                                     <span className={"px-2 font-extrabold " + ((!currentDayData.driverStatus[i] || isExcludedToday) ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700')}>{getMaskedName(nm, selectedDateStr, false)}</span>
@@ -1572,16 +1579,17 @@
                                                 <div className="flex items-center gap-2 shrink-0">
                                                     <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-1 rounded-md font-black">{currentDayData.driverRanks[i]}순위</span>
                                                     {isEditAllowed && (
-                                                        <label className={`flex items-center gap-1 cursor-pointer pl-1 border-l border-slate-200 ml-1 ${isLocked ? 'opacity-50' : ''}`} title="해당 날짜부터 영구 제외">
+                                                        <div className={`flex items-center gap-1 pl-1 border-l border-slate-200 ml-1 ${isLocked ? 'opacity-50' : ''}`} title="해당 날짜부터 영구 제외">
                                                             <input 
+                                                                id={`exclude_chk_${i}`}
                                                                 type="checkbox" 
                                                                 checked={isExcludedToday} 
                                                                 onChange={() => toggleExcludeFromDate(i, isExcludedToday)}
                                                                 disabled={isLocked}
                                                                 className="w-4 h-4 text-red-500 rounded border-slate-300 focus:ring-red-400 cursor-pointer"
                                                             />
-                                                            <span className={`text-[10px] font-bold ${isExcludedToday ? 'text-red-600' : 'text-slate-400'}`}>제외</span>
-                                                        </label>
+                                                            <label htmlFor={`exclude_chk_${i}`} className={`text-[10px] font-bold cursor-pointer ${isExcludedToday ? 'text-red-600' : 'text-slate-400'}`}>제외</label>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>
@@ -1619,7 +1627,7 @@
                                             {vehiclesList.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                                         </select>
                                         <input type="text" id="maintContentInput" className="flex-1 w-full min-w-[150px] text-xs border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-bold" placeholder="정비/점검 내역 입력" onKeyDown={(e) => { if(e.key==='Enter') { const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, e.target.value, dStr); e.target.value=''; } }} />
-                                        <button onClick={() => { const el = document.getElementById('maintContentInput'); const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, el.value, dStr); el.value=''; }} className="bg-slate-800 text-white w-8 h-8 rounded-lg flex items-center justify-center shrink-0"><Icons.Plus className="w-4 h-4"/></button>
+                                        <button type="button" onClick={() => { const el = document.getElementById('maintContentInput'); const vId = document.getElementById('maintVehicleSelect').value; const dStr = document.getElementById('maintDateInput').value; addMaintenanceLog(vId, el.value, dStr); el.value=''; }} className="bg-slate-800 text-white w-8 h-8 rounded-lg flex items-center justify-center shrink-0"><Icons.Plus className="w-4 h-4"/></button>
                                     </div>
                                 )}
                                 
@@ -1650,7 +1658,7 @@
                                                                     </div>
                                                                 </div>
                                                                 {isEditAllowed && (
-                                                                    <button onClick={() => deleteMaintenanceLog(log.id)} className="text-red-200 hover:text-red-500 shrink-0 p-1"><Icons.Trash2 className="w-3 h-3"/></button>
+                                                                    <button type="button" onClick={() => deleteMaintenanceLog(log.id)} className="text-red-200 hover:text-red-500 shrink-0 p-1"><Icons.Trash2 className="w-3 h-3"/></button>
                                                                 )}
                                                             </div>
                                                         );
@@ -1665,31 +1673,31 @@
                             {}
                             {isEditAllowed && (
                                 <div className="grid grid-cols-2 gap-3">
-                                    <button onClick={() => setModal({ type: 'passwordPrompt', data: { nextModal: 'drivers', title: '인원 관리' } })} className="bg-white border border-orange-200 text-orange-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-orange-50 transition flex items-center justify-center gap-2">
+                                    <button type="button" onClick={() => setModal({ type: 'passwordPrompt', data: { nextModal: 'drivers', title: '인원 관리' } })} className="bg-white border border-orange-200 text-orange-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-orange-50 transition flex items-center justify-center gap-2">
                                         <Icons.Users className="w-4 h-4"/> 인원 관리
                                     </button>
-                                    <button onClick={() => setModal({ type: 'vehicles' })} className="bg-white border border-indigo-200 text-indigo-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-indigo-50 transition flex items-center justify-center gap-2">
+                                    <button type="button" onClick={() => setModal({ type: 'vehicles' })} className="bg-white border border-indigo-200 text-indigo-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-indigo-50 transition flex items-center justify-center gap-2">
                                         <Icons.Bus className="w-4 h-4"/> 차량 관리
                                     </button>
-                                    <button onClick={() => setModal({ type: 'paySettings' })} className="bg-white border border-yellow-300 text-yellow-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-yellow-50 transition flex items-center justify-center gap-2">
+                                    <button type="button" onClick={() => setModal({ type: 'paySettings' })} className="bg-white border border-yellow-300 text-yellow-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-yellow-50 transition flex items-center justify-center gap-2">
                                         <Icons.Money className="w-4 h-4"/> 관외비 설정
                                     </button>
-                                    <button onClick={() => setModal({ type: 'data' })} className="bg-white border border-slate-200 text-slate-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                                    <button type="button" onClick={() => setModal({ type: 'data' })} className="bg-white border border-slate-200 text-slate-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2">
                                         <Icons.Database className="w-4 h-4"/> 데이터 및 백업
                                     </button>
                                     
-                                    <button onClick={() => setModal({ type: 'passwordPrompt', data: { nextModal: 'excludedDrivers', title: '제외 운전자 게시판' } })} className="bg-white border border-slate-800 text-slate-800 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2 col-span-2">
+                                    <button type="button" onClick={() => setModal({ type: 'passwordPrompt', data: { nextModal: 'excludedDrivers', title: '제외 운전자 게시판' } })} className="bg-white border border-slate-800 text-slate-800 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-slate-50 transition flex items-center justify-center gap-2 col-span-2">
                                         <Icons.UserX className="w-4 h-4"/> 제외 운전자 게시판
                                     </button>
                                     
                                     {ENABLE_DISPATCH_LOGS_BOARD && (
-                                        <button onClick={() => setModal({ type: 'dispatchLogs' })} className="bg-white border border-blue-200 text-blue-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-blue-50 transition flex items-center justify-center gap-2 col-span-2">
+                                        <button type="button" onClick={() => setModal({ type: 'dispatchLogs' })} className="bg-white border border-blue-200 text-blue-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-blue-50 transition flex items-center justify-center gap-2 col-span-2">
                                             <Icons.ClipboardList className="w-4 h-4"/> 배차인원 변동사항 (D+1 ~ D+10)
                                         </button>
                                     )}
                                     
                                     {ENABLE_PAST_DISPATCH_LOGS_BOARD && (
-                                        <button onClick={() => setModal({ type: 'pastDispatchLogs' })} className="bg-white border border-rose-200 text-rose-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-rose-50 transition flex items-center justify-center gap-2 col-span-2">
+                                        <button type="button" onClick={() => setModal({ type: 'pastDispatchLogs' })} className="bg-white border border-rose-200 text-rose-600 py-3 rounded-2xl text-sm font-bold shadow-sm hover:bg-rose-50 transition flex items-center justify-center gap-2 col-span-2">
                                             <Icons.ClipboardList className="w-4 h-4"/> 인원 변동사항 (당일 ~ 3일)
                                         </button>
                                     )}
@@ -1738,8 +1746,8 @@
                                                             <div className="flex items-center gap-2">
                                                                 {isReserved ? (
                                                                     <div className="flex gap-2">
-                                                                        <button onClick={() => setModal({ type: 'kakao', data: v.id })} className="bg-yellow-300 text-[10px] px-2 py-1 rounded shadow-sm">카톡분석</button>
-                                                                        <button onClick={() => toggleVehicleReservation(v.id)} className="bg-red-100 text-red-500 text-[10px] px-2 py-1 rounded">삭제</button>
+                                                                        <button type="button" onClick={() => setModal({ type: 'kakao', data: v.id })} className="bg-yellow-300 text-[10px] px-2 py-1 rounded shadow-sm">카톡분석</button>
+                                                                        <button type="button" onClick={() => toggleVehicleReservation(v.id)} className="bg-red-100 text-red-500 text-[10px] px-2 py-1 rounded">삭제</button>
                                                                     </div>
                                                                 ) : (v.type === 'BUS' ? <Icons.Bus className="text-slate-300 w-5 h-5"/> : <Icons.BusFront className="text-slate-300 w-5 h-5"/>)}
                                                             </div>
@@ -1845,7 +1853,7 @@
                         )}
                     </div>
                     
-                    {}
+                    {/* Footer */}
                     <footer className="w-full py-8 bg-slate-50 text-center border-t border-slate-200 mt-8">
                         <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
                             <div className="flex items-center gap-2 mb-1">
@@ -1862,7 +1870,7 @@
                             <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md animate-[fadeIn_0.2s_ease-out]">
                                 <div className="flex justify-between items-center mb-6">
                                     <h2 className="text-2xl font-black text-slate-800">{isLoginMode ? '담당자 로그인' : '일반 회원가입'}</h2>
-                                    <button onClick={() => { setModal({ type: null }); setAuthError(''); }} className="text-slate-400 hover:text-slate-600"><Icons.X className="w-6 h-6"/></button>
+                                    <button type="button" onClick={() => { setModal({ type: null }); setAuthError(''); }} className="text-slate-400 hover:text-slate-600"><Icons.X className="w-6 h-6"/></button>
                                 </div>
                                 <p className="text-slate-500 mb-6 text-sm font-bold">
                                     {isLoginMode ? '등록된 담당자 계정으로 로그인하세요.' : '조회 전용 일반 회원 계정을 생성합니다.'}
@@ -1903,7 +1911,7 @@
                             <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl animate-[fadeIn_0.2s_ease-out]">
                                 <div className="p-4 border-b font-bold flex justify-between bg-slate-800 text-white">
                                     <h3 className="flex items-center gap-2"><Icons.UserCheck className="w-4 h-4"/>관리자 로그인</h3>
-                                    <button onClick={() => setModal({ type: null })} className="hover:text-slate-300"><Icons.X className="w-4 h-4"/></button>
+                                    <button type="button" onClick={() => setModal({ type: null })} className="hover:text-slate-300"><Icons.X className="w-4 h-4"/></button>
                                 </div>
                                 <div className="p-6 space-y-4">
                                     <p className="text-xs text-slate-500 font-bold text-center mb-2">배차 일정을 수정하려면 비밀번호를 입력하세요.</p>
@@ -1917,7 +1925,7 @@
                                             } 
                                         }}
                                     />
-                                    <button 
+                                    <button type="button"
                                         onClick={() => {
                                             if (document.getElementById('adminPwdInput').value === adminPassword) { setLocalIsAdmin(true); localStorage.setItem('isAdmin', 'true'); setModal({ type: null }); } 
                                             else { setAlertMessage("비밀번호가 일치하지 않습니다."); }
@@ -1934,7 +1942,7 @@
                             <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl animate-[fadeIn_0.2s_ease-out]">
                                 <div className="p-4 border-b font-bold flex justify-between bg-slate-800 text-white">
                                     <h3 className="flex items-center gap-2"><Icons.UserCheck className="w-4 h-4"/>{modal.data?.title} 접근 권한 확인</h3>
-                                    <button onClick={() => setModal({ type: null })} className="hover:text-slate-300"><Icons.X className="w-4 h-4"/></button>
+                                    <button type="button" onClick={() => setModal({ type: null })} className="hover:text-slate-300"><Icons.X className="w-4 h-4"/></button>
                                 </div>
                                 <div className="p-6 space-y-4">
                                     <p className="text-xs text-slate-500 font-bold text-center mb-2">해당 메뉴에 접근하려면 관리자 비밀번호를 입력하세요.</p>
@@ -1949,7 +1957,7 @@
                                         }}
                                         autoFocus
                                     />
-                                    <button 
+                                    <button type="button"
                                         onClick={() => {
                                             if (document.getElementById('promptPwdInput').value === adminPassword) { setModal({ type: modal.data?.nextModal }); } 
                                             else { setAlertMessage("비밀번호가 일치하지 않습니다."); }
@@ -1966,14 +1974,14 @@
                             <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl">
                                 <div className="p-4 border-b font-bold flex justify-between">
                                     <h3>대체 운전자 선택</h3>
-                                    <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
+                                    <button type="button" onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
                                 </div>
                                 <div className="p-2 max-h-[400px] overflow-y-auto">
                                     {driverNames.map((nm, idx) => {
                                         if (!nm) return null;
                                         if (!currentDayData.employedStatus[idx]) return null; // 삭제된 사람은 수동배정 불가
                                         return (
-                                            <button key={idx} onClick={() => applyReplacement(`${modal.data.vId}_${modal.data.sIdx}`, idx)} className="w-full p-3 text-left font-bold text-sm border-b border-slate-50 hover:bg-blue-50 flex justify-between">
+                                            <button type="button" key={idx} onClick={() => applyReplacement(`${modal.data.vId}_${modal.data.sIdx}`, idx)} className="w-full p-3 text-left font-bold text-sm border-b border-slate-50 hover:bg-blue-50 flex justify-between">
                                                 <span>{currentDayData.driverRanks[idx]}위 {nm}</span>
                                                 <span className={`text-xs ${currentDayData.driverStatus[idx] ? 'text-blue-500' : 'text-slate-300'}`}>{currentDayData.driverStatus[idx] ? '출근' : '휴무'}</span>
                                             </button>
@@ -1981,7 +1989,7 @@
                                     })}
                                 </div>
                                 <div className="p-3 border-t">
-                                    <button onClick={() => applyReplacement(`${modal.data.vId}_${modal.data.sIdx}`, null)} className="w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-lg">수동 배정 해제</button>
+                                    <button type="button" onClick={() => applyReplacement(`${modal.data.vId}_${modal.data.sIdx}`, null)} className="w-full py-2 bg-red-50 text-red-500 text-xs font-bold rounded-lg">수동 배정 해제</button>
                                 </div>
                             </div>
                         </div>
@@ -1992,11 +2000,11 @@
                             <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden border-2 border-yellow-400 shadow-2xl">
                                 <div className="bg-yellow-400 p-4 font-bold flex justify-between items-center text-slate-900">
                                     <h3 className="flex items-center gap-2"><Icons.MessageCircle className="w-4 h-4"/> 카톡 정보 분석</h3>
-                                    <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
+                                    <button type="button" onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
                                 </div>
                                 <div className="p-6">
                                     <textarea id="kInput" className="w-full h-32 bg-slate-50 border rounded-xl p-3 text-sm font-bold mb-4 outline-none focus:ring-2 focus:ring-yellow-400" placeholder="여기에 붙여넣으세요..."></textarea>
-                                    <button onClick={() => {
+                                    <button type="button" onClick={() => {
                                         const txt = document.getElementById('kInput').value;
                                         const pData = {};
                                         const dM = txt.match(/(?:장소|목적지|행선지)[:\s]+([^\n,]+)/) || txt.match(/([가-힣\s]+(?:역|터미널|공항|호텔|시청|본사))/);
@@ -2026,7 +2034,7 @@
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between bg-sky-50 text-sky-700 shrink-0">
                                             <h3 className="flex items-center gap-2"><Icons.ClipboardList className="w-4 h-4"/>개인별 업무일지 작성</h3>
-                                            <button onClick={() => setModal({ type: null })} className="hover:text-sky-900"><Icons.X className="w-4 h-4"/></button>
+                                            <button type="button" onClick={() => setModal({ type: null })} className="hover:text-sky-900"><Icons.X className="w-4 h-4"/></button>
                                         </div>
                                         <div className="p-4 border-b shrink-0 bg-white"><input type="date" value={modalDate} onChange={(e) => setModalDate(e.target.value)} className="w-full border rounded-lg p-2 text-sm font-bold outline-none focus:ring-2 focus:ring-sky-400 bg-slate-50"/></div>
                                         <div className="p-4 overflow-y-auto flex-grow space-y-2 bg-slate-50" key={modalDate}>
@@ -2040,7 +2048,7 @@
                                                 ) : null);
                                             })()}
                                         </div>
-                                        <div className="p-4 border-t shrink-0 bg-white"><button onClick={async () => { if(!modalDate) return; const newLogs = {}; driverNames.forEach((nm, idx) => { if(nm){ const val = document.getElementById(`workLogInput_${idx}`)?.value.trim(); if(val) newLogs[idx] = val; }}); await db.doc(`artifacts/${APP_ID}/public/data/calendar/${modalDate}`).set({ workLogs: newLogs }, { merge: true }); setAlertMessage('저장 완료'); setModal({ type: null }); }} className="w-full bg-sky-500 text-white py-3 rounded-xl font-bold">저장하기</button></div>
+                                        <div className="p-4 border-t shrink-0 bg-white"><button type="button" onClick={async () => { if(!modalDate) return; const newLogs = {}; driverNames.forEach((nm, idx) => { if(nm){ const val = document.getElementById(`workLogInput_${idx}`)?.value.trim(); if(val) newLogs[idx] = val; }}); await db.doc(`artifacts/${APP_ID}/public/data/calendar/${modalDate}`).set({ workLogs: newLogs }, { merge: true }); setAlertMessage('저장 완료'); setModal({ type: null }); }} className="w-full bg-sky-500 text-white py-3 rounded-xl font-bold">저장하기</button></div>
                                     </>
                                 )}
 
@@ -2048,23 +2056,23 @@
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between bg-rose-50 text-rose-700">
                                             <h3 className="flex items-center gap-2"><Icons.Bell className="w-4 h-4"/>일정 알림 등록</h3>
-                                            <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
+                                            <button type="button" onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
                                         </div>
                                         <div className="p-6 space-y-4">
                                             <input type="date" id="notiDateInput" defaultValue={selectedDateStr} className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50"/>
                                             <textarea id="notiTextInput" placeholder="예: 회식" className="w-full h-24 border rounded-lg p-3 text-sm font-bold bg-slate-50 resize-none"></textarea>
-                                            <button onClick={async () => { const d = document.getElementById('notiDateInput').value; const t = document.getElementById('notiTextInput').value; if(d){ await db.doc(`artifacts/${APP_ID}/public/data/calendar/${d}`).set({ dailyMemo: t, memoAuthor: (ENABLE_LOGIN_SYSTEM && user && !user.isAnonymous && user.email) ? user.email : (isAdmin ? '관리자' : '익명') }, { merge: true }); setModal({type:null}); } }} className="w-full bg-rose-500 text-white py-3 rounded-xl font-bold">등록하기</button>
+                                            <button type="button" onClick={async () => { const d = document.getElementById('notiDateInput').value; const t = document.getElementById('notiTextInput').value; if(d){ await db.doc(`artifacts/${APP_ID}/public/data/calendar/${d}`).set({ dailyMemo: t, memoAuthor: (ENABLE_LOGIN_SYSTEM && user && !user.isAnonymous && user.email) ? user.email : (isAdmin ? '관리자' : '익명') }, { merge: true }); setModal({type:null}); } }} className="w-full bg-rose-500 text-white py-3 rounded-xl font-bold">등록하기</button>
                                         </div>
                                     </>
                                 )}
 
                                 {modal.type === 'data' && (
                                     <>
-                                        <div className="p-4 border-b font-bold flex justify-between"><h3>데이터 관리</h3><button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
+                                        <div className="p-4 border-b font-bold flex justify-between"><h3>데이터 관리</h3><button type="button" onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
                                         <div className="p-6 space-y-4">
-                                            <button onClick={handleBackup} className="w-full py-3 bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 transition shadow-sm"><Icons.Download className="w-5 h-5"/> 백업 데이터 다운로드</button>
-                                            <div className="relative"><input type="file" accept=".json" onChange={handleRestore} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/><button className="w-full py-3 bg-slate-100 text-slate-700 border rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition shadow-sm"><Icons.Upload className="w-5 h-5"/> 백업 파일로 복원</button></div>
-                                            <button onClick={() => setModal({ type: 'systemLogs' })} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-700 transition shadow-sm"><Icons.ClipboardList className="w-5 h-5"/> 로그확인</button>
+                                            <button type="button" onClick={handleBackup} className="w-full py-3 bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 transition shadow-sm"><Icons.Download className="w-5 h-5"/> 백업 데이터 다운로드</button>
+                                            <div className="relative"><input type="file" accept=".json" onChange={handleRestore} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/><button type="button" className="w-full py-3 bg-slate-100 text-slate-700 border rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition shadow-sm"><Icons.Upload className="w-5 h-5"/> 백업 파일로 복원</button></div>
+                                            <button type="button" onClick={() => setModal({ type: 'systemLogs' })} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-700 transition shadow-sm"><Icons.ClipboardList className="w-5 h-5"/> 로그확인</button>
                                             {ENABLE_LOGIN_SYSTEM && isEditAllowed && (
                                                 <div className="mt-6 pt-6 border-t space-y-3">
                                                     <h4 className="text-xs font-bold text-slate-500">권한 관리자 계정 추가 (회원 생성 및 권한 부여)</h4>
@@ -2083,7 +2091,7 @@
                                                             placeholder="관리자용 비밀번호 (6자리 이상)" 
                                                             className="w-full border rounded-lg p-2 text-xs font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
                                                         />
-                                                        <button 
+                                                        <button type="button"
                                                             onClick={() => createAdminAccount(newAdminEmail, newAdminPassword)} 
                                                             disabled={authProcessing}
                                                             className="w-full bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-xl font-bold text-xs shadow-sm transition-colors flex items-center justify-center gap-1"
@@ -2097,7 +2105,7 @@
                                                             {adminEmails.map((em, idx) => (
                                                                 <div key={idx} className="bg-white border rounded px-2 py-0.5 text-[10px] flex items-center gap-1 font-bold text-slate-600">
                                                                     <span>{em}</span>
-                                                                    <button 
+                                                                    <button type="button"
                                                                         onClick={() => {
                                                                             setConfirmDialog({
                                                                                 message: `관리자 권한에서 [ ${em} ] 계정을 삭제하시겠습니까?`,
@@ -2128,7 +2136,7 @@
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between bg-slate-800 text-white shrink-0">
                                             <h3 className="flex items-center gap-2"><Icons.ClipboardList className="w-4 h-4"/>시스템 변경 기록 (로그)</h3>
-                                            <button onClick={() => setModal({ type: 'data' })} className="hover:text-slate-300"><Icons.X className="w-4 h-4"/></button>
+                                            <button type="button" onClick={() => setModal({ type: 'data' })} className="hover:text-slate-300"><Icons.X className="w-4 h-4"/></button>
                                         </div>
                                         <div className="p-4 overflow-y-auto flex-grow bg-slate-50 space-y-2">
                                             {dispatchLogs.concat(pastDispatchLogs).length === 0 ? <div className="text-center text-slate-400 text-sm py-10">기록된 변동사항이 없습니다.</div> : (
@@ -2156,13 +2164,13 @@
 
                                 {modal.type === 'paySettings' && (
                                     <>
-                                        <div className="p-4 border-b font-bold flex justify-between"><h3>관외비 설정</h3><button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
+                                        <div className="p-4 border-b font-bold flex justify-between"><h3>관외비 설정</h3><button type="button" onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
                                         <div className="p-6 space-y-4">
                                             <div><label className="text-xs font-bold mb-1 block">당일 운행 수당</label><input type="number" id="payDayInput" defaultValue={paySettings.day} className="w-full border rounded-lg p-2 font-bold"/></div>
                                             <div><label className="text-xs font-bold mb-1 block">숙박 운행 (1일당 수당)</label><input type="number" id="paySleepInput" defaultValue={paySettings.sleep} className="w-full border rounded-lg p-2 font-bold"/></div>
                                             <div><label className="text-xs font-bold mb-1 block">성묘 지원 수당</label><input type="number" id="payGraveInput" defaultValue={paySettings.grave} className="w-full border rounded-lg p-2 font-bold"/></div>
                                             <div><label className="text-xs font-bold mb-1 block">나들이 수당</label><input type="number" id="payPicnicInput" defaultValue={paySettings.picnic} className="w-full border rounded-lg p-2 font-bold"/></div>
-                                            <button onClick={() => updatePaySettings(document.getElementById('payDayInput').value, document.getElementById('paySleepInput').value, document.getElementById('payGraveInput').value, document.getElementById('payPicnicInput').value)} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">저장하기</button>
+                                            <button type="button" onClick={() => updatePaySettings(document.getElementById('payDayInput').value, document.getElementById('paySleepInput').value, document.getElementById('payGraveInput').value, document.getElementById('payPicnicInput').value)} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">저장하기</button>
                                         </div>
                                     </>
                                 )}
@@ -2171,12 +2179,12 @@
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between bg-orange-50 text-orange-700 shrink-0">
                                             <h3>운전자 명단 관리</h3>
-                                            <button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
+                                            <button type="button" onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button>
                                         </div>
                                         <div className="p-4 shrink-0 bg-white border-b flex flex-col gap-3">
                                             <div className="flex gap-2">
                                                 <input type="text" id="newDriverName" placeholder="새 운전자 이름" className="w-full text-xs border rounded p-2 font-bold outline-none focus:border-orange-400" onKeyDown={(e) => { if(e.key==='Enter') { addDriver(e.target.value); e.target.value=''; }}}/>
-                                                <button onClick={() => { const el = document.getElementById('newDriverName'); addDriver(el.value); el.value=''; }} className="bg-slate-800 text-white w-12 rounded text-xs font-bold">등록</button>
+                                                <button type="button" onClick={() => { const el = document.getElementById('newDriverName'); addDriver(el.value); el.value=''; }} className="bg-slate-800 text-white w-12 rounded text-xs font-bold">등록</button>
                                             </div>
                                             <div className="text-[10px] text-slate-500 font-bold bg-slate-50 p-2 rounded border border-slate-100 break-keep leading-relaxed">
                                                 * 이곳에서 제외(삭제)한 인원은 <b>'제외 운전자 게시판'</b>에서 따로 관리 및 복원할 수 있습니다.<br/>
@@ -2195,7 +2203,7 @@
                                                         <span className="shrink-0 p-1.5 rounded-md w-8 h-8 text-white bg-emerald-500 flex items-center justify-center cursor-default"><Icons.UserCheck className="w-4 h-4"/></span>
                                                         <span className="w-12 text-center border border-slate-100 rounded bg-slate-50 py-1 mx-2 text-[10px] text-slate-400 font-black cursor-not-allowed">No. {i}</span>
                                                         <AutoSaveInput value={nm || ""} onSave={(val) => updateDriverName(i, val)} className="w-full outline-none font-bold text-slate-700" />
-                                                        <button onClick={() => removeDriver(i)} className="text-slate-300 hover:text-red-500 shrink-0 p-1.5 transition-colors" title="명단에서 제외하기"><Icons.Trash2 className="w-4 h-4"/></button>
+                                                        <button type="button" onClick={() => removeDriver(i)} className="text-slate-300 hover:text-red-500 shrink-0 p-1.5 transition-colors" title="명단에서 제외하기"><Icons.Trash2 className="w-4 h-4"/></button>
                                                     </div>
                                                 );
                                             })}
@@ -2208,7 +2216,7 @@
                                     <>
                                         <div className="p-4 border-b font-bold flex justify-between bg-slate-800 text-white shrink-0">
                                             <h3 className="flex items-center gap-2"><Icons.UserX className="w-4 h-4"/> 제외 운전자 (퇴사자) 관리</h3>
-                                            <button onClick={() => setModal({ type: null })} className="hover:text-slate-300"><Icons.X className="w-4 h-4"/></button>
+                                            <button type="button" onClick={() => setModal({ type: null })} className="hover:text-slate-300"><Icons.X className="w-4 h-4"/></button>
                                         </div>
                                         <div className="p-4 shrink-0 bg-white border-b flex flex-col gap-3">
                                             <div className="text-[11px] text-slate-600 font-bold bg-slate-50 p-3 rounded-lg border border-slate-200 break-keep leading-relaxed shadow-sm">
@@ -2224,7 +2232,7 @@
 
                                                 return (
                                                     <div key={i} className="flex justify-between items-center p-2.5 border border-slate-200 rounded-lg bg-slate-50 opacity-90 shadow-sm">
-                                                        <button onClick={() => restoreDriver(i)} className="shrink-0 p-1.5 rounded-md w-8 h-8 flex items-center justify-center text-white bg-slate-400 hover:bg-emerald-500 transition-colors shadow" title="이 인원 복원하기"><Icons.RotateCw className="w-4 h-4"/></button>
+                                                        <button type="button" onClick={() => restoreDriver(i)} className="shrink-0 p-1.5 rounded-md w-8 h-8 flex items-center justify-center text-white bg-slate-400 hover:bg-emerald-500 transition-colors shadow" title="이 인원 복원하기"><Icons.RotateCw className="w-4 h-4"/></button>
                                                         <span className="w-14 text-center py-1 mx-2 text-[10px] font-black text-rose-500 bg-rose-50 border border-rose-100 rounded shadow-sm">제외됨</span>
                                                         <span className="w-full font-bold text-slate-500 line-through truncate px-1">{nm}</span>
                                                         <span className="text-[10px] font-bold text-slate-400 shrink-0 bg-white border border-slate-200 px-2 py-1 rounded whitespace-nowrap shadow-sm">{driverLeaveDates[i]} 제외</span>
@@ -2238,19 +2246,19 @@
 
                                 {modal.type === 'vehicles' && (
                                     <>
-                                        <div className="p-4 border-b font-bold flex justify-between"><h3>차량 관리</h3><button onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
+                                        <div className="p-4 border-b font-bold flex justify-between"><h3>차량 관리</h3><button type="button" onClick={() => setModal({ type: null })}><Icons.X className="w-4 h-4"/></button></div>
                                         <div className="p-6">
                                             <div className="flex gap-2 mb-3 bg-slate-50 p-2 rounded-xl">
                                                 <input type="text" id="addVName" placeholder="호차명" className="w-1/3 text-xs border rounded p-1.5"/>
                                                 <input type="text" id="addVPlate" placeholder="번호" className="w-1/3 text-xs border rounded p-1.5"/>
                                                 <select id="addVType" className="w-1/3 text-xs border rounded p-1.5"><option value="BUS">버스</option><option value="SOLATI">솔라티</option></select>
-                                                <button onClick={()=>{ const n=document.getElementById('addVName').value, p=document.getElementById('addVPlate').value, t=document.getElementById('addVType').value; if(n) { addVehicle(n,p,t); document.getElementById('addVName').value=''; document.getElementById('addVPlate').value=''; } }} className="bg-slate-800 text-white w-12 rounded text-xs shrink-0">등록</button>
+                                                <button type="button" onClick={()=>{ const n=document.getElementById('addVName').value, p=document.getElementById('addVPlate').value, t=document.getElementById('addVType').value; if(n) { addVehicle(n,p,t); document.getElementById('addVName').value=''; document.getElementById('addVPlate').value=''; } }} className="bg-slate-800 text-white w-12 rounded text-xs shrink-0">등록</button>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2 max-h-[400px] overflow-y-auto">
                                                 {vehiclesList.map(v => (
                                                     <div key={v.id} className="flex justify-between items-center p-3 border rounded-lg text-sm font-bold bg-white">
                                                         <div className="flex flex-col w-full mr-2"><span>{v.name}</span><AutoSaveInput value={v.plate} onSave={(val) => updateVehiclePlate(v.id, val)} className="text-[10px] text-slate-400 font-normal outline-none bg-transparent"/></div>
-                                                        <button onClick={() => removeVehicle(v.id)} className="text-red-300 hover:text-red-500 shrink-0"><Icons.Trash2 className="w-4 h-4"/></button>
+                                                        <button type="button" onClick={() => removeVehicle(v.id)} className="text-red-300 hover:text-red-500 shrink-0"><Icons.Trash2 className="w-4 h-4"/></button>
                                                     </div>
                                                 ))}
                                             </div>
@@ -2263,17 +2271,17 @@
                                         <div className="p-5 border-b font-bold flex flex-col gap-3 bg-slate-50">
                                             <div className="flex justify-between items-center">
                                                 <div className="flex gap-4">
-                                                    <div className="flex bg-white rounded-lg border px-2 py-1"><button onClick={() => setStatsYear(y => y - 1)}><Icons.ChevronLeft className="w-4 h-4"/></button><span className="mx-2 text-lg font-black w-16 text-center">{statsYear}년</span><button onClick={() => setStatsYear(y => y + 1)}><Icons.ChevronRight className="w-4 h-4"/></button></div>
-                                                    {statsMode === 'monthly' && <div className="flex bg-white rounded-lg border px-2 py-1"><button onClick={() => setStatsMonth(m => m === 0 ? 11 : m - 1)}><Icons.ChevronLeft className="w-4 h-4"/></button><span className="mx-2 text-lg font-black w-10 text-center">{statsMonth + 1}월</span><button onClick={() => setStatsMonth(m => m === 11 ? 0 : m + 1)}><Icons.ChevronRight className="w-4 h-4"/></button></div>}
+                                                    <div className="flex bg-white rounded-lg border px-2 py-1"><button type="button" onClick={() => setStatsYear(y => y - 1)}><Icons.ChevronLeft className="w-4 h-4"/></button><span className="mx-2 text-lg font-black w-16 text-center">{statsYear}년</span><button type="button" onClick={() => setStatsYear(y => y + 1)}><Icons.ChevronRight className="w-4 h-4"/></button></div>
+                                                    {statsMode === 'monthly' && <div className="flex bg-white rounded-lg border px-2 py-1"><button type="button" onClick={() => setStatsMonth(m => m === 0 ? 11 : m - 1)}><Icons.ChevronLeft className="w-4 h-4"/></button><span className="mx-2 text-lg font-black w-10 text-center">{statsMonth + 1}월</span><button type="button" onClick={() => setStatsMonth(m => m === 11 ? 0 : m + 1)}><Icons.ChevronRight className="w-4 h-4"/></button></div>}
                                                 </div>
-                                                <button onClick={() => setModal({ type: null })}><Icons.X className="w-6 h-6"/></button>
+                                                <button type="button" onClick={() => setModal({ type: null })}><Icons.X className="w-6 h-6"/></button>
                                             </div>
                                             <div className="flex justify-between items-center">
                                                 <div className="flex gap-2">
-                                                    <div className="flex bg-white rounded-lg p-1 border shadow-sm"><button onClick={() => setStatsMode('monthly')} className={`px-4 py-1.5 text-xs font-bold rounded-md ${statsMode === 'monthly' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>월별 상세</button><button onClick={() => setStatsMode('yearly')} className={`px-4 py-1.5 text-xs font-bold rounded-md ${statsMode === 'yearly' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>연간 집계</button></div>
-                                                    {statsMode === 'yearly' && <div className="flex bg-white rounded-lg p-1 border shadow-sm"><button onClick={() => setYearlyViewType('money')} className={`px-3 py-1.5 text-xs font-bold rounded-md ${yearlyViewType === 'money' ? 'bg-emerald-500 text-white' : 'text-slate-500'}`}>수당</button><button onClick={() => setYearlyViewType('hours')} className={`px-3 py-1.5 text-xs font-bold rounded-md ${yearlyViewType === 'hours' ? 'bg-orange-500 text-white' : 'text-slate-500'}`}>인정시간</button></div>}
+                                                    <div className="flex bg-white rounded-lg p-1 border shadow-sm"><button type="button" onClick={() => setStatsMode('monthly')} className={`px-4 py-1.5 text-xs font-bold rounded-md ${statsMode === 'monthly' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>월별 상세</button><button type="button" onClick={() => setStatsMode('yearly')} className={`px-4 py-1.5 text-xs font-bold rounded-md ${statsMode === 'yearly' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>연간 집계</button></div>
+                                                    {statsMode === 'yearly' && <div className="flex bg-white rounded-lg p-1 border shadow-sm"><button type="button" onClick={() => setYearlyViewType('money')} className={`px-3 py-1.5 text-xs font-bold rounded-md ${yearlyViewType === 'money' ? 'bg-emerald-500 text-white' : 'text-slate-500'}`}>수당</button><button type="button" onClick={() => setYearlyViewType('hours')} className={`px-3 py-1.5 text-xs font-bold rounded-md ${yearlyViewType === 'hours' ? 'bg-orange-500 text-white' : 'text-slate-500'}`}>인정시간</button></div>}
                                                 </div>
-                                                <button onClick={handleDownloadExcel} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700 transition flex items-center gap-1 shadow-sm"><Icons.FileExcel className="w-3 h-3"/>엑셀</button>
+                                                <button type="button" onClick={handleDownloadExcel} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700 transition flex items-center gap-1 shadow-sm"><Icons.FileExcel className="w-3 h-3"/>엑셀</button>
                                             </div>
                                         </div>
                                         <div className="flex-grow overflow-auto p-0 bg-white">
